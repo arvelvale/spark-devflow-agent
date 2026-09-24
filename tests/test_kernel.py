@@ -31,8 +31,10 @@ def pick(skill_key: str | None, appropriate: float = 0.9, hard: float = 0.0):
             return noul_ans(0.1 if skill_key else 0.95)
         if name.startswith("fits_"):
             return noul_ans(0.9)
-        if name == "appropriate":
+        if name == "in_scope":
             return noul_ans(appropriate)
+        if name == "collateral":
+            return noul_ans(0.05)
         if name == "difficulty":
             return choice_ans({"simple": 1 - hard, "moderate": 0.0, "hard": hard})
         if name == "writes_code":
@@ -172,3 +174,23 @@ def test_compression_triggers_in_long_session(cfg, monkeypatch):
                 ids = {c["id"] for c in m.get("tool_calls") or []}
             if m["role"] == "tool":
                 assert m["tool_call_id"] in ids
+
+
+def test_skill_name_called_as_tool_is_explained(cfg, monkeypatch):
+    # 实测问题（2026-09-24）：本地模型把技能名 standup-brief 当工具调用
+    agent, clients = make_agent(cfg, monkeypatch, [reply(calls=[("standup-brief", {})]), reply("好")],
+                                decision=pick("standup_brief"))
+    agent.run_turn("站会简报")
+    tool_msg = next(m for m in clients["local"].received[1] if m["role"] == "tool")
+    assert "是技能不是工具" in tool_msg["content"]
+    assert any(e["type"] == "tool.call" and e["data"]["tool"] == "standup-brief" for e in events(agent))
+
+
+def test_truncated_output_gets_one_nudge(cfg, monkeypatch):
+    # 实测问题（2026-09-24）：step-5 修 bug 时一步用满输出上限被截断，整轮空手而归
+    cut = reply("def total(...): 很长的代码……")
+    cut.finish_reason = "length"
+    agent, clients = make_agent(cfg, monkeypatch, [cut, reply("改用工具后完成")], decision=pick(None))
+    res = agent.run_turn("修一下")
+    assert res.reply == "改用工具后完成" and res.stopped == "final"
+    assert any("不要在回复里贴大段代码" in (m.get("content") or "") for m in clients["local"].received[1])

@@ -28,6 +28,10 @@ from .tools.linear import LinearClient
 from .trace import Trace
 
 
+TRUNCATION_NUDGE = ("（系统提示）上一条输出太长被截断了。不要在回复里贴大段代码或完整文件，"
+                    "直接调用 edit_file / write_file 等工具修改文件；每次只改一处，改完再汇报。")
+
+
 def new_session_id() -> str:
     return f"s-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
 
@@ -64,7 +68,9 @@ class LocalFirst:
         raise LLMError("本地模型都不可用" + (f"：{errors[-1]}" if errors else ""))
 
     def complete(self, prompt: str, max_tokens: int = 800) -> str:
-        return self.chat([{"role": "user", "content": prompt}], temperature=0, max_tokens=max_tokens).content
+        """辅助任务：关思考、温度 0。"""
+        return self.chat([{"role": "user", "content": prompt}], temperature=0, max_tokens=max_tokens,
+                         thinking=False).content
 
 
 class Agent:
@@ -160,13 +166,18 @@ class Agent:
             tool_log.append({"tool": call.name, "ok": False})
             return f"[未执行] {call.parse_error}。请用合法的 JSON 对象重新调用 {call.name}。"
         if tool is None:
+            self.trace.emit("tool.call", {"tool": call.name, "ok": False, "error": "未知工具"})
             tool_log.append({"tool": call.name, "ok": False})
+            if call.name in self.selector.by_name:
+                return f"[未执行] {call.name} 是技能不是工具：它的步骤已经在系统提示里，直接按步骤用工具执行。"
             return f"[未执行] 没有叫 {call.name} 的工具。"
         allowed = tool.permission == Permission.READ or tool.name in allowed_write
-        g = self.gate.check(tool, call.arguments, allowed=allowed, goal=self.working.goal, request=request)
+        g = self.gate.check(tool, call.arguments, allowed=allowed, goal=self.working.goal, request=request,
+                            plan=[t["item"] for t in self.working.todo])
         self.trace.emit("tool.gate", {
             "tool": tool.name, "permission": tool.permission.value, "decision": g.decision, "reason": g.reason,
             "appropriate": None if g.appropriate is None else round(g.appropriate, 3), "threshold": g.threshold,
+            "collateral": None if g.collateral is None else round(g.collateral, 3),
             "confirmed": g.confirmed, "args": call.arguments}, fallback=g.fallback)
         if not g.execute:
             tool_log.append({"tool": tool.name, "ok": False, "denied": True})
@@ -223,7 +234,7 @@ class Agent:
 
         ep, tier = route.endpoint, route.tier
         tried = {ep.name}
-        malformed, escalated = 0, False
+        malformed, escalated, truncated_once = 0, False, False
         tool_log: list[dict] = []
         reply, stopped, steps = "", "max_steps", 0
         for step in range(1, self.cfg.max_steps + 1):
@@ -234,7 +245,8 @@ class Agent:
             messages = [{"role": "system", "content": system}] + self.conv.messages
             est = estimate_tokens(system) + self.conv.tokens()
             try:
-                res = self.clients[ep.name].chat(messages, schemas, max_tokens=4096)
+                res = self.clients[ep.name].chat(messages, schemas, max_tokens=ep.max_tokens,
+                                                 thinking=self.cfg.local_thinking or ep.name == "cloud")
             except LLMError as exc:
                 if ep.api_key_env == "":
                     self.router.mark_down(ep)
@@ -252,6 +264,7 @@ class Agent:
                 self.ratio = min(max(res.usage["prompt_tokens"] / est, 0.5), 2.5)
             self.trace.emit("llm.call", {"tier": tier, "endpoint": ep.name, "step": step,
                                          "finish_reason": res.finish_reason,
+                                         "content_chars": len(res.content), "reasoning_chars": len(res.reasoning),
                                          "tool_calls": [c.name for c in res.tool_calls],
                                          "prompt_tokens_est": int(est * self.ratio)},
                             latency_ms=res.latency * 1000, provider=ep.name, model=res.model, usage=res.usage)
@@ -269,6 +282,15 @@ class Agent:
                                                        "reason": f"本地模型连续 {malformed} 次给出非法工具参数"})
                     ep, tier, escalated = self.cfg.cloud, "cloud", True
                     tried.add("cloud")
+                continue
+            if res.finish_reason == "length" and not truncated_once:
+                # 输出超长被截断：常见原因是把代码贴进回复而不是用工具改文件。提示一次后继续
+                truncated_once = True
+                if res.content:
+                    self.conv.add({"role": "assistant", "content": clip(res.content, 2000)}, turn)
+                self.conv.add({"role": "user", "content": TRUNCATION_NUDGE}, turn)
+                self.trace.emit("error", {"where": "llm", "message": "输出超长被截断，已提示改用工具后继续",
+                                          "handled": True})
                 continue
             reply = res.content or ("（输出被截断）" if res.finish_reason == "length" else "（模型没有给出回复）")
             stopped = "final"

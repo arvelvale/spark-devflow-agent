@@ -59,11 +59,15 @@ def print_event(ev: dict) -> None:
         if d["permission"] == "read":
             return
         line = (f"[门控] {d['tool']}（{d['permission']}）→ {d['decision']}"
-                f" appropriate={_pct(d['appropriate'])} 阈值={d['threshold']}"
+                f" 合理={_pct(d['appropriate'])} 越界={_pct(d.get('collateral'))}"
                 + (f" 用户{'同意' if d['confirmed'] else '拒绝'}" if d["decision"] == "confirm" else "") + fb)
     elif t == "tool.call":
         line = f"[工具] {d['tool']} {'✓' if d['ok'] else '✗'}{ms}"
     elif t == "context.compress":
+        if d.get("noop"):
+            line = f"[压缩] 超预算（{d['before_tokens']} > {d['budget']}×水位）但近几轮受保护，本轮不压"
+            print("  " + line, flush=True)
+            return
         line = f"[压缩] {d['before_tokens']} → {d['after_tokens']} tokens，块：{[c['verdict'] for c in d['chunks']]}{fb}"
     elif t == "memory.write":
         kept = [i for i in d["items"] if i.get("layer") != "episodic"]
@@ -164,7 +168,8 @@ def cmd_doctor(args) -> int:
             continue
         t0 = time.monotonic()
         try:
-            r = LLMClient(ep).chat([{"role": "user", "content": "只回复两个字：在线"}], max_tokens=64, retries=0)
+            r = LLMClient(ep).chat([{"role": "user", "content": "只回复两个字：在线"}], max_tokens=64, retries=0,
+                                   thinking=False)
             print(f"✓ {ep.name:6} {r.model}：{time.monotonic() - t0:.1f}s 「{r.content[:20]}」")
         except LLMError as exc:
             print(f"✗ {ep.name:6} {ep.model}：{exc}")

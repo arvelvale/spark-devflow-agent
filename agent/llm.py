@@ -90,6 +90,7 @@ class LLMClient:
         temperature: float = 0.2,
         max_tokens: int = 2048,
         retries: int = 2,
+        thinking: bool = True,
     ) -> ChatResult:
         ep = self.endpoint
         if not ep.configured:
@@ -101,6 +102,8 @@ class LLMClient:
             "max_tokens": max_tokens,
             **ep.extra,
         }
+        if not thinking:
+            body.update(ep.no_think)
         if tools:
             body["tools"] = tools
         headers = {"Authorization": f"Bearer {ep.api_key}"} if ep.api_key else {}

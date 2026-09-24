@@ -209,6 +209,10 @@ class SkillSelector:
         if gate < self.th.skill_gate:
             return Selection([], "jev", reason=f"门控值 {gate:.2f} < {self.th.skill_gate}，不需要技能",
                              detail=detail, usage=usage, latency=time.monotonic() - t0)
+        p_none = probs.get(NONE_KEY, 0.0)
+        if p_none >= self.th.skill_none:
+            return Selection([], "jev", reason=f"第一级判定无技能适用（P(none)={p_none:.2f} ≥ {self.th.skill_none}）",
+                             detail=detail, usage=usage, latency=time.monotonic() - t0)
         cands = [k for k, p in sorted(probs.items(), key=lambda x: -x[1])
                  if k != NONE_KEY and k in self.by_key and p >= 0.02][: self.th.skill_stage2_topk]
         if not cands:
@@ -239,7 +243,8 @@ class SkillSelector:
         roster = "\n".join(s.index_line() for s in self.skills)
         prompt = BASELINE_PROMPT.format(roster=roster, recent=clip(recent, 1200) or "（无）", request=request)
         try:
-            res = self.baseline_llm.chat([{"role": "user", "content": prompt}], temperature=0, max_tokens=512)
+            res = self.baseline_llm.chat([{"role": "user", "content": prompt}], temperature=0, max_tokens=512,
+                                         thinking=False)
         except LLMError as exc:
             return Selection([], "baseline", fallback=True, reason=f"模型不可用：{exc}")
         data = extract_json(res.content)

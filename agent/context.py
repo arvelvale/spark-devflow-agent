@@ -193,6 +193,7 @@ class Compressor:
         self.decision = decision
         self.summarize = summarize
         self.trace = trace
+        self._noop_turn = -1  # 超预算但没东西可压时，每轮只记一次，避免轨迹刷屏
 
     def maybe_compress(
         self,
@@ -260,6 +261,12 @@ class Compressor:
             event["phases"].append({"phase": "turns", "after_tokens": now()})
 
         event["after_tokens"] = now()
+        if not event["phases"]:
+            # 超预算但近几轮都受保护、没有可压的内容：每轮只记一次，提醒调预算或 keep_recent_turns
+            if self.trace and self._noop_turn != current_turn:
+                self._noop_turn = current_turn
+                self.trace.emit("context.compress", {**event, "noop": True}, fallback=fallback)
+            return None
         if self.trace:
             self.trace.emit("context.compress", event, fallback=fallback)
         return event

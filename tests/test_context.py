@@ -121,3 +121,14 @@ def test_working_state_render_and_evidence_cap():
     assert len(w.evidence) == WorkingState.MAX_EVIDENCE and w.evidence[-1] == "e29"
     text = w.render()
     assert "[x] b" in text and "[ ] a" in text and "不改 main" in text
+
+
+def test_noop_compression_logged_once_per_turn(tmp_path):
+    from agent.trace import Trace
+    conv = build_conv(tmp_path, 2, tool_chars=100)
+    tr = Trace("s", tmp_path / "t.jsonl")
+    comp = Compressor(small_budget(keep_recent_turns=5), None, None, tr)
+    for _ in range(3):  # 系统提示本身就超预算，但没有可压的轮次
+        assert comp.maybe_compress(conv, 5000, WorkingState(), 2) is None
+    lines = (tmp_path / "t.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and '"noop": true' in lines[0]

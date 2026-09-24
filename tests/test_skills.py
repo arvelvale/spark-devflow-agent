@@ -115,3 +115,11 @@ def test_fallback_to_baseline_when_jev_down(skills):
 def test_baseline_ignores_unknown_names(skills):
     llm = FakeLLM("local", [reply('{"skills": ["rm-everything", "plan-writer"]}')])
     assert SkillSelector(skills, Thresholds(), None, llm).select("x", mode="baseline").names == ["plan-writer"]
+
+
+def test_stage1_none_is_respected(skills):
+    # 实测问题（2026-09-24）："最近 3 条提交是什么"第一级 none=0.6 最高，但门控高，旧逻辑仍进第二级误选
+    dec = jev({"none": 0.6, "standup_brief": 0.25, "progress_logger": 0.15}, (0.9, 0.7, 0.2),
+              {"standup_brief": 0.9, "progress_logger": 0.5})
+    sel = SkillSelector(skills, Thresholds(), dec, None).select("最近 3 条提交是什么")
+    assert sel.names == [] and len(dec.calls) == 1
