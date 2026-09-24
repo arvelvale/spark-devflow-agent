@@ -1,0 +1,792 @@
+<title>Spark 开发流全景</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<style>
+:root{
+  --bg:#f3f5f1; --surface:#ffffff; --surface-2:#eceff0; --ink:#17201b; --ink-2:#4d5952; --ink-3:#86908a;
+  --line:#d9dfd9; --line-2:#c4ccc5; --grid:rgba(23,32,27,.045);
+  --green:#35724a; --green-soft:#e0ede4; --blue:#3464c2; --blue-soft:#e3eaf8;
+  --amber:#b07812; --amber-soft:#f7edd6; --red:#b3443a; --red-soft:#f6e2de;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei UI",system-ui,sans-serif;
+  --serif:"Noto Serif SC","Songti SC","SimSun",serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1311; --surface:#151a17; --surface-2:#1b211e; --ink:#e2e8e3; --ink-2:#a3ada6; --ink-3:#6f7972;
+  --line:#28302b; --line-2:#36403a; --grid:rgba(255,255,255,.035);
+  --green:#6bb57f; --green-soft:#1a2c20; --blue:#7fa2ec; --blue-soft:#19243a;
+  --amber:#dea548; --amber-soft:#2e2610; --red:#df6f5e; --red-soft:#35201c; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0f1311; --surface:#151a17; --surface-2:#1b211e; --ink:#e2e8e3; --ink-2:#a3ada6; --ink-3:#6f7972;
+  --line:#28302b; --line-2:#36403a; --grid:rgba(255,255,255,.035);
+  --green:#6bb57f; --green-soft:#1a2c20; --blue:#7fa2ec; --blue-soft:#19243a;
+  --amber:#dea548; --amber-soft:#2e2610; --red:#df6f5e; --red-soft:#35201c; color-scheme:dark;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.7 var(--sans);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;}
+.wrap{max-width:1160px;margin:0 auto;padding-inline:20px}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0}
+h2{font-size:25px;font-weight:700;letter-spacing:.01em}
+h3{font-size:17px;font-weight:600}
+p{margin:0}
+code,.mono{font-family:var(--mono);font-size:.88em}
+a{color:var(--green)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* 导航 */
+nav.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:6px;height:50px;overflow-x:auto;scrollbar-width:none}
+nav.top .mark{font-family:var(--serif);font-weight:700;margin-right:12px;white-space:nowrap}
+nav.top a{color:var(--ink-2);text-decoration:none;padding:5px 10px;border-radius:7px;white-space:nowrap;font-size:14px}
+nav.top a:hover{background:var(--surface-2);color:var(--ink)}
+nav.top .count{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--amber);white-space:nowrap;padding-left:12px}
+
+section{padding-block:44px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12.5px;letter-spacing:.12em;color:var(--ink-3);text-transform:uppercase;margin-bottom:8px}
+.lede{color:var(--ink-2);max-width:68ch;margin-top:10px}
+.head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px;margin-bottom:22px}
+
+/* 开场 */
+.intro{padding-block:40px 30px}
+.intro h1{font-size:clamp(28px,4.2vw,42px);line-height:1.25;max-width:22ch}
+.intro .lede{font-size:16px}
+.facts{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:22px;padding-top:18px;border-top:1px dashed var(--line-2)}
+.fact{display:flex;flex-direction:column}
+.fact b{font-family:var(--mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums}
+.fact span{font-size:12.5px;color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 9px;border-radius:999px;font-size:12.5px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.pill.g{background:var(--green-soft);color:var(--green)} .pill.b{background:var(--blue-soft);color:var(--blue)}
+.pill.a{background:var(--amber-soft);color:var(--amber)} .pill.r{background:var(--red-soft);color:var(--red)}
+
+/* 架构图 */
+.arch{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start}
+.svgbox{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px;overflow-x:auto}
+.svgbox svg{display:block;width:100%;min-width:760px;height:auto;color:var(--ink)}
+.node rect.box{fill:var(--surface);stroke:var(--line-2);stroke-width:1.2;transition:stroke .15s,fill .15s}
+.node{cursor:pointer}
+.node:hover rect.box{stroke:var(--ink-3)}
+.node.dim{opacity:.38}
+.node.sel rect.box{stroke:var(--green);stroke-width:2.4;fill:var(--green-soft)}
+.node.rel rect.box{stroke:var(--ink-2);stroke-width:1.6}
+.node text.t{font:500 13px var(--sans);fill:var(--ink)}
+.node text.s{font:400 11px var(--mono);fill:var(--ink-3)}
+.region{fill:none;stroke:var(--line-2);stroke-dasharray:4 5;stroke-width:1.2}
+.region-label{font:500 12px var(--sans);fill:var(--ink-3);letter-spacing:.04em}
+.edge{fill:none;stroke-width:1.6}
+.edge.k-local{stroke:var(--green)} .edge.k-cloud{stroke:var(--blue)} .edge.k-tunnel{stroke:var(--amber);stroke-dasharray:6 5}
+.edge.k-flow{stroke:var(--ink-2)} .edge.k-jev{stroke:var(--ink-2);stroke-dasharray:2 4}
+.elabel{font:500 11.5px var(--sans);fill:var(--ink-2);paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:22px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+.detail{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;position:sticky;top:64px}
+.detail h3{margin-bottom:2px}
+.detail .file{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-bottom:10px;word-break:break-all}
+.detail dl{margin:0;display:grid;gap:10px}
+.detail dt{font-size:12px;color:var(--ink-3);letter-spacing:.05em}
+.detail dd{margin:2px 0 0;font-size:14px;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.btn{border:1px solid var(--line-2);background:var(--surface);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:13.5px}
+.btn:hover{background:var(--surface-2)}
+.btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* 一轮之旅 */
+.journey{margin-top:22px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:2px;max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:6px}
+.steps button{width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:7px 10px;cursor:pointer;display:flex;gap:10px;align-items:baseline}
+.steps button:hover{background:var(--surface-2)}
+.steps button.on{background:var(--green-soft)}
+.steps .ev{font-family:var(--mono);font-size:12px;color:var(--ink-3);min-width:96px}
+.steps .nm{font-size:13.5px}
+.stage{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:18px 20px;display:grid;gap:12px;align-content:start}
+.stage .why{color:var(--ink-2)}
+pre.trace{margin:0;padding:12px 14px;border-radius:8px;background:var(--surface-2);font:12.5px/1.6 var(--mono);overflow-x:auto;white-space:pre}
+.stage-nav{display:flex;gap:8px;align-items:center}
+.stage-nav .muted{margin-left:auto;font-size:12.5px;color:var(--ink-3)}
+
+/* 原理实验室 */
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-block:22px 16px}
+.lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.lab h3{margin-bottom:6px}
+.lab .desc{color:var(--ink-2);font-size:14px;margin-bottom:14px}
+.ctl{display:grid;grid-template-columns:128px minmax(0,1fr) 44px;align-items:center;gap:10px;margin-bottom:8px;font-size:13.5px}
+.ctl label{color:var(--ink-2)}
+.ctl output{font-family:var(--mono);font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--green)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.presets .btn{font-size:12.5px;padding:4px 10px}
+.src{font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.rules{display:grid;gap:6px}
+.rule{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);font-size:13.5px;align-items:start}
+.rule .n{font-family:var(--mono);font-size:12px;color:var(--ink-3);padding-top:1px}
+.rule.hit{border-color:var(--green);background:var(--green-soft)}
+.rule.pass{opacity:.55}
+.rule.skip{opacity:.3}
+.verdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:8px;background:var(--surface-2);font-size:15px}
+.verdict b{font-family:var(--serif);font-size:18px}
+.meter{position:relative;height:8px;border-radius:4px;background:var(--surface-2);margin:6px 0 2px}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--green)}
+.meter u{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-2);text-decoration:none}
+.plot{width:100%;max-width:420px;height:auto;color:var(--ink)}
+.plot text{font:11px var(--sans);fill:var(--ink-2)}
+.ctxbar{display:flex;height:34px;border-radius:6px;overflow:hidden;border:1px solid var(--line-2);position:relative;margin:6px 0 18px}
+.ctxbar span{display:flex;align-items:center;justify-content:center;font:11px var(--mono);color:var(--ink);border-right:1px solid var(--surface);overflow:hidden;white-space:nowrap;transition:flex-basis .4s}
+.ctxbar .prot{background:var(--green-soft)} .ctxbar .old{background:var(--surface-2)} .ctxbar .sum{background:var(--blue-soft)} .ctxbar .recent{background:var(--amber-soft)}
+.ctxwrap{position:relative}
+.mark-line{position:absolute;top:-6px;bottom:12px;width:2px}
+.mark-line em{position:absolute;top:-16px;left:4px;font:11px var(--mono);font-style:normal;white-space:nowrap}
+.turnrow{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px;margin-bottom:6px}
+.turnrow .seg{display:inline-flex;border:1px solid var(--line-2);border-radius:7px;overflow:hidden}
+.turnrow .seg button{border:0;background:var(--surface);padding:2px 9px;font-size:12.5px;cursor:pointer}
+.turnrow .seg button.on{background:var(--ink);color:var(--bg)}
+.log{font:12.5px/1.7 var(--mono);color:var(--ink-2);background:var(--surface-2);border-radius:8px;padding:10px 12px;min-height:60px;white-space:pre-wrap}
+textarea{width:100%;font:13.5px/1.5 var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;resize:vertical}
+
+/* 实测 */
+.evid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.card h3{margin-bottom:12px}
+.hbar{display:grid;grid-template-columns:118px minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:13px;margin-bottom:7px}
+.hbar .track{height:14px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.hbar .track i{display:block;height:100%}
+.hbar b{font-family:var(--mono);font-weight:500;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+table.ab{width:100%;border-collapse:collapse;font-size:13.5px}
+table.ab th,table.ab td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+table.ab th:first-child,table.ab td:first-child{text-align:left}
+table.ab th{font-weight:500;color:var(--ink-3);font-size:12.5px}
+table.ab td.win{color:var(--green);font-weight:500}
+.note{font-size:12.5px;color:var(--ink-3);margin-top:10px}
+
+/* 分工 */
+.timeline{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden;margin-bottom:22px}
+.day{padding:12px 12px 14px;border-right:1px solid var(--line);font-size:13px}
+.day:last-child{border-right:0}
+.day b{display:block;font-family:var(--mono);font-weight:500;font-size:13px}
+.day.today{background:var(--green-soft)}
+.day.done{color:var(--ink-3)}
+.day p{color:var(--ink-2);margin-top:4px;line-height:1.55}
+.owners{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.task{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:grid;gap:8px;align-content:start}
+.task.p0{border-left:3px solid var(--red)} .task.p1{border-left:3px solid var(--amber)} .task.p2{border-left:3px solid var(--line-2)}
+.task .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.task h4{margin:0;font-size:15px;font-weight:500;line-height:1.5}
+.task .why{font-size:13px;color:var(--ink-2)}
+.task .kv{font-size:12.5px;color:var(--ink-2)}
+.task .kv b{color:var(--ink-3);font-weight:400;margin-right:4px}
+.task code{word-break:break-all}
+.task label.done{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-3);cursor:pointer}
+.task.checked{opacity:.55}
+.cut{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13.5px;color:var(--ink-2)}
+.cut .arrow{color:var(--ink-3)}
+
+.risks{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px 28px}
+.risk{padding:10px 0;border-bottom:1px dashed var(--line-2);font-size:14px}
+.risk b{font-weight:500}
+footer{padding-block:28px 40px;color:var(--ink-3);font-size:12.5px}
+
+@media (max-width:900px){
+  .arch,.journey,.lab{grid-template-columns:minmax(0,1fr)}
+  .detail{position:static}
+  .timeline{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .day:nth-child(3){border-right:0}
+  .day:nth-child(-n+3){border-bottom:1px solid var(--line)}
+}
+@media (max-width:520px){
+  .ctl{grid-template-columns:96px minmax(0,1fr) 40px}
+  .timeline{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .day{border-right:1px solid var(--line)!important;border-bottom:1px solid var(--line)}
+  .hbar{grid-template-columns:90px minmax(0,1fr) 60px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<nav class="top"><div class="wrap">
+  <span class="mark">Spark 开发流</span>
+  <a href="#arch">全景</a><a href="#journey">一轮之旅</a><a href="#lab">原理实验室</a><a href="#evidence">实测</a><a href="#plan">分工与排期</a><a href="#risk">风险</a>
+  <span class="count" id="countdown"></span>
+</div></nav>
+
+<div class="wrap intro">
+  <div class="eyebrow">DGX Spark 黑客松 · 团队内部讲解 · 2026-09-24</div>
+  <h1>每一个"选哪个"都可度量的开发流 Agent</h1>
+  <p class="lede">它读 Linear issue、Obsidian 纪要和你说的话，跑"拆解 → 计划 → 开发 → 写日志 → 同步状态"。日常步骤在 Spark 本地的 Nemotron 上跑，写代码这类难题交给云端 step-5；选技能、选模型、放不放行一次写操作、上下文丢什么，这些判断都交给 JEV，并逐条写进决策轨迹——面板、A/B 数据和演示视频读的都是这同一份轨迹。</p>
+  <div class="facts">
+    <div class="fact"><b>~80 tok/s</b><span>本地 Nemotron NVFP4（Qwen 是 11–13）</span></div>
+    <div class="fact"><b>26 / 26</b><span>技能选择任务集（训练集成绩）</span></div>
+    <div class="fact"><b>7 / 9</b><span>门控标定集，3 个破坏性改动全拦</span></div>
+    <div class="fact"><b>25 步 · 284 s</b><span>真机修好 DAY-298 精度 bug</span></div>
+    <div class="fact"><b>99</b><span>单元测试</span></div>
+  </div>
+</div>
+
+<section id="arch"><div class="wrap">
+  <div class="head"><div>
+    <div class="eyebrow">全景</div>
+    <h2>三块地盘，一个内核</h2>
+    <p class="lede">点任意模块，看它连着谁、干什么、实测过什么、下一步归谁。橙色虚线是节点借你电脑出境的反向隧道——节点直连不了境外，JEV 和 Linear 都要走这条路。</p>
+  </div>
+  <div class="chips"><button class="btn" id="showAll">显示全部连线</button></div></div>
+  <div class="arch">
+    <figure style="margin:0">
+      <div class="svgbox">
+        <svg id="archSvg" viewBox="0 0 1120 600" role="img" aria-label="架构图：你的电脑上的浏览器与代理、DGX Spark 节点上的 Web 后端、内核、决策层、工具与本地模型，以及外部的 StepFun、JEV、Linear；JEV 与 Linear 经 SSH 反向隧道出境">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker>
+          </defs>
+          <g id="regions"></g><g id="edges"></g><g id="nodes"></g><g id="elabels"></g>
+        </svg>
+      </div>
+      <figcaption class="legend">
+        <span><i style="border-color:var(--green)"></i>本地模型</span>
+        <span><i style="border-color:var(--blue)"></i>云端直连</span>
+        <span><i style="border-color:var(--amber);border-top-style:dashed"></i>经反向隧道出境</span>
+        <span><i style="border-color:var(--ink-2);border-top-style:dotted"></i>问 JEV</span>
+        <span><i style="border-color:var(--ink-2)"></i>调用 / 数据流</span>
+      </figcaption>
+    </figure>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+</div></section>
+
+<section id="journey"><div class="wrap">
+  <div class="eyebrow">一轮之旅</div>
+  <h2>一句"把 DAY-298 的 bug 修掉"，走了哪些路</h2>
+  <p class="lede">下面是 9 月 24 日节点真机上的真实一轮（会话 <code>s-20260924-020756-c260</code>）。逐步点开，上面的架构图会跟着点亮对应模块。</p>
+  <div class="journey">
+    <ol class="steps" id="steps"></ol>
+    <div class="stage" id="stage"></div>
+  </div>
+</div></section>
+
+<section id="lab"><div class="wrap">
+  <div class="eyebrow">原理实验室</div>
+  <h2>拖动数字，看规则怎么判</h2>
+  <p class="lede">每个实验里的规则和阈值都和 <code>agent/config.py</code> 一致；预设里标"真实"的数值来自节点上的轨迹，标"示意"的是为了讲清楚规则而设的。改阈值之前先在这里想明白方向。</p>
+  <div class="tabs" id="labTabs" role="tablist"></div>
+  <div class="lab" id="labBody"></div>
+</div></section>
+
+<section id="evidence"><div class="wrap">
+  <div class="eyebrow">实测</div>
+  <h2>现在手上有的证据</h2>
+  <p class="lede">都是 9 月 24 日在节点上跑出来的。能进 README 和视频的是这些数，但每一条旁边都写着它还缺什么。</p>
+  <div class="evid" style="margin-top:20px">
+    <div class="card">
+      <h3>本地模型：同一节点、同一脚本</h3>
+      <div class="hbar"><span>Nemotron · vLLM</span><span class="track"><i style="width:100%;background:var(--green)"></i></span><b>~80 tok/s</b></div>
+      <div class="hbar"><span>Qwen3.8 · Ollama</span><span class="track"><i style="width:15%;background:var(--ink-3)"></i></span><b>11–13</b></div>
+      <div class="hbar"><span>工具调用</span><span class="track"><i style="width:100%;background:var(--green-soft)"></i></span><b>2/2 · 2/2</b></div>
+      <p class="note">为什么快 6–7 倍：MoE 每个 token 只激活 3B 参数，NVFP4 又是 GB10 原生精度。还没开官方配方里的 DSpark 投机解码（草稿模型不在节点上）。样本只有两道工具题，规划质量还没比。</p>
+    </div>
+    <div class="card">
+      <h3>技能选择 A/B（任务集 v1，26 条）</h3>
+      <table class="ab">
+        <tr><th>指标</th><th>JEV 两级</th><th>主模型自选</th></tr>
+        <tr><td>完全正确率</td><td class="win">100%</td><td>88.5%</td></tr>
+        <tr><td>误选率</td><td class="win">0</td><td>11.5%</td></tr>
+        <tr><td>硬凑技能（none 类）</td><td class="win">0</td><td>14.3%</td></tr>
+        <tr><td>近义混淆</td><td class="win">0</td><td>1</td></tr>
+        <tr><td>平均耗时</td><td>3.67 s</td><td class="win">0.26 s</td></tr>
+        <tr><td>选择阶段输入 token</td><td>44.7k</td><td class="win">16.0k</td></tr>
+      </table>
+      <p class="note">调阈值前 JEV 也是 88.5%，错的全是"组合技能"。<b>阈值是在同一批题上调的，100% 是训练集成绩</b>，要留出集才算数。</p>
+    </div>
+    <div class="card">
+      <h3>工具门控：一个问题 vs 两个问题</h3>
+      <div class="hbar"><span>单问题 · 合法最低</span><span class="track"><i style="width:16%;background:var(--green)"></i></span><b>0.16</b></div>
+      <div class="hbar"><span>单问题 · 越界最高</span><span class="track"><i style="width:17%;background:var(--red)"></i></span><b>0.17</b></div>
+      <div class="hbar"><span>两问 · 符合期望</span><span class="track"><i style="width:78%;background:var(--green)"></i></span><b>7 / 9</b></div>
+      <div class="hbar"><span>破坏性改动拦截</span><span class="track"><i style="width:100%;background:var(--green)"></i></span><b>3 / 3</b></div>
+      <p class="note">单问题下合法和越界几乎重叠，门控形同虚设（修 bug 时每一步都要人确认）。拆成"是不是合理步骤"+"会不会删改无关内容"后分开了。标定集只有 9 条。</p>
+    </div>
+    <div class="card">
+      <h3>端到端与压缩</h3>
+      <div class="hbar"><span>修 DAY-298</span><span class="track"><i style="width:100%;background:var(--blue)"></i></span><b>284 s</b></div>
+      <div class="hbar"><span>站会简报</span><span class="track"><i style="width:16%;background:var(--green)"></i></span><b>44.7 s</b></div>
+      <div class="hbar"><span>压缩 6137→4084</span><span class="track"><i style="width:67%;background:var(--green)"></i></span><b>−33%</b></div>
+      <p class="note">修 bug：分支上 2 个提交，测试 3 → 7 个全过，没越权碰 Linear；前两次失败（输出上限、步数上限）都已修。压缩后第 3 轮追问第 1 轮细节仍答对，但只测了一个 3 轮会话。</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="plan"><div class="wrap">
+  <div class="eyebrow">分工与排期</div>
+  <h2>接下来五天，谁做什么</h2>
+  <p class="lede">P0 是提交前必须有的，P1 决定分数上限，P2 有余力再做。每张卡都写了"做完的样子"和验证命令。勾选只存在你这台浏览器里，团队进度以 Linear 为准。</p>
+  <div class="timeline" id="timeline" style="margin-top:20px"></div>
+  <div class="owners" id="owners"></div>
+  <div class="board" id="board"></div>
+  <div class="cut"><b>时间不够时按这个顺序砍：</b>
+    <span class="pill">OpenShell</span><span class="arrow">→</span><span class="pill">记忆扩展</span><span class="arrow">→</span><span class="pill">压缩降级为代码规则</span><span class="arrow">→</span><span class="pill">语音</span>
+    <span style="margin-left:6px">不许砍：</span><span class="pill g">本地/云端路由</span><span class="pill g">A/B 数据</span><span class="pill g">Web 面板</span>
+  </div>
+</div></section>
+
+<section id="risk"><div class="wrap">
+  <div class="eyebrow">风险</div>
+  <h2>如实说明</h2>
+  <div class="risks" style="margin-top:18px">
+    <div class="risk"><b>操作机必须在线。</b>节点直连不了境外，JEV 和 Linear 走你电脑的代理；公网面板也挂在一条 SSH 会话上，断了就停。</div>
+    <div class="risk"><b>JEV 和 StepFun 都是外调。</b>对外只能说"主推理在本地完成"，不能说全流程离线。</div>
+    <div class="risk"><b>step-5-preview 是预览版。</b>截止前可能改名或下线，备选 step-3.7-flash；并发约 8 就 429。</div>
+    <div class="risk"><b>评估样本小。</b>任务集 26 条、门控 9 条、压缩 1 个会话，阈值是在同一批数据上调的。</div>
+    <div class="risk"><b>公网面板是明文 http。</b>口令可能被截获；公网下浏览器不给麦克风，语音演示走 localhost。</div>
+    <div class="risk"><b>后端重启会丢在线会话。</b>历史能回放，但不能接着聊。</div>
+    <div class="risk"><b>节点上的记忆库已有重复条目。</b>去重规则已改，旧的要在面板的记忆抽屉里手动"忘掉"。</div>
+    <div class="risk"><b>密钥要轮换。</b>StepFun、JEV、Linear 的 key 和面板口令出现过在对话记录里，开发结束后全部换掉。</div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">仓库：github.com/arvelvale/spark-devflow-agent · 设计正本 <code>docs/agent架构设计.md</code> · 三个接口已冻结 v1（<code>docs/接口/</code>）· 本页 <code>docs/项目全景.html</code></div></footer>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const NS="http://www.w3.org/2000/svg";
+function el(tag,attrs,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;return e}
+function h(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e}
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- 倒计时 ---------- */
+const DEADLINE=new Date("2026-09-29T23:59:00+08:00");
+function tick(){const ms=DEADLINE-Date.now();const c=$("#countdown");
+  if(ms<=0){c.textContent="已过截止时间";return}
+  const d=Math.floor(ms/864e5),hh=Math.floor(ms%864e5/36e5);c.textContent=`距提交截止 ${d} 天 ${hh} 小时`}
+tick();setInterval(tick,60000);
+
+/* ---------- 架构数据 ---------- */
+const R=[
+  {x:10,y:30,w:190,h:560,label:"你的电脑（操作机）"},
+  {x:220,y:30,w:660,h:560,label:"DGX Spark 节点 · GB10 · 121 GiB 统一内存"},
+  {x:900,y:30,w:210,h:560,label:"外部服务"}];
+const M={
+ browser:{x:25,y:80,w:160,h:54,t:"浏览器面板",s:"web/ · Vite+TS",file:"web/src/*",owner:"晨熠",
+   role:"对话、实时决策轨迹、网页确认写操作、长期记忆管理、语音输入。",
+   how:"后端用 SSE 把轨迹事件原样推过来；写操作要确认时弹卡片，你点同意/不行，agent 在节点上一直等（10 分钟没回应按拒绝）。",
+   measured:"站会一轮 44.7 s；拆 DAY-299 弹 4 张外部写确认，逐张拒绝后 Linear 里确实没新增。",
+   next:"历史会话里补显示确认记录；后端重启后能接着聊。"},
+ cli:{x:25,y:160,w:160,h:54,t:"命令行",s:"python -m agent",file:"agent/__main__.py",owner:"全员",
+   role:"chat / run / doctor / skills / memory / serve 六个子命令。",how:"和面板共用同一个内核；终端里每个决策压成一行打印。",
+   measured:"doctor 五项全绿：本地、备用、云端、JEV、Linear。",next:"评测、复现问题优先用它，比面板快。"},
+ proxy:{x:25,y:500,w:160,h:54,t:"本机代理",s:"反向隧道出口",file:"scripts/node.py",owner:"晨熠",
+   role:"让节点借你的网络访问 JEV、Linear、GitHub。",
+   how:"SSH 在节点回环地址上开一个端口，流量回到你电脑的 127.0.0.1:10090 代理再出去。只有设了 https_proxy 的进程走这条路，节点系统配置一点没动。",
+   measured:"JEV、Linear、GitHub 均可达；StepFun 在国内，节点直连不走隧道。",
+   next:"公网面板要长期挂，得做常驻隧道 + tmux 起服务。"},
+ server:{x:240,y:80,w:180,h:54,t:"Web 后端",s:"agent/server.py",file:"agent/server.py",owner:"晨熠",
+   role:"口令登录、在线会话、SSE 推轨迹、网页确认、记忆管理、语音转文字。",
+   how:"只用 Python 标准库（ThreadingHTTPServer），节点上零安装。每个在线会话一个 Agent 实例，轮次在后台线程跑。",
+   measured:"9 个接口测试；公网经节点端口映射可达，未登录 401，登出后 cookie 立即失效。",
+   next:"会话持久化；公网建议加 https（现在口令走明文）。"},
+ kernel:{x:440,y:80,w:420,h:54,t:"内核 · 一轮 turn",s:"agent/kernel.py",file:"agent/kernel.py",owner:"晨熠",
+   role:"把一轮串起来：选技能 → 选模型 → 精选记忆 → [压缩检查 → 主模型 → 门控 → 执行 → 回填] × 最多 30 步 → 回复 → 写回记忆。",
+   how:"任何外部依赖失败都走降级（JEV 挂了主模型自选、本地挂了切备用再切云端、连续两次非法工具参数也升级云端），并在轨迹里标 fallback。",
+   measured:"修 DAY-298：25 步 284 s。第一次跑被 4096 输出上限截断、第二次撞 16 步上限，都已修。",
+   next:"单轮耗时拆解（思考 token 占大头）交给 agent 优化。"},
+ skills:{x:240,y:190,w:180,h:54,t:"技能选择",s:"skills.py · 8 个技能",file:"agent/skills.py, skills/*/SKILL.md",owner:"skills 优化 + agent 优化",
+   role:"决定这一轮加载哪个技能（可以不加载，也可以组合）。",
+   how:"第一级：JEV Choice 在全部技能里宽排，外加 3 个门控 Noul；第二级：前 3 个候选逐个问 fits。命中才把技能正文注入系统提示，写权限也只在命中时放开。",
+   measured:"任务集 v1：26/26（训练集），主模型自选 88.5%，硬凑率 14.3%。",
+   next:"留出集验证；补内部技能把 roster 做到 12–15 个。"},
+ decision:{x:440,y:190,w:200,h:54,t:"JEV 决策客户端",s:"decision.py",file:"agent/decision.py",owner:"晨熠",
+   role:"所有结构化判断的唯一出入口。",
+   how:"同一个 state 的问题一次请求问完（fan-out）；结果按哈希缓存，可离线重放；失败抛 DecisionUnavailable，调用方各自降级。JEV 不算数、不生成文本，这些都在代码和本地模型里做。",
+   measured:"jev-1.13.0，单次 0.6–1.3 s（经隧道）。",next:"按输入 token 计费，评测别无限并发。"},
+ router:{x:660,y:190,w:200,h:54,t:"模型路由",s:"router.py",file:"agent/router.py",owner:"agent 优化",
+   role:"本地为主，难题升级 step-5。",
+   how:"P(困难) ≥ 0.50，或「要写代码」 ≥ 0.80 且 P(简单) < 0.30 → 云端；技能可以钉死档位；按可用性再修正：本地挂 → 备用 → 云端。",
+   measured:"修 bug 判「要写代码 0.96」上云；拆 issue 判中等留本地。任务集路由一致率 77.8%。",
+   next:"逐条看不一致的那几条，标定两个阈值。"},
+ context:{x:240,y:290,w:180,h:54,t:"上下文压缩",s:"context.py",file:"agent/context.py",owner:"agent 优化",
+   role:"上下文超过预算 70% 时压到 45% 以下。",
+   how:"目标、约束、待办、关键证据放在工作记忆里，永远不压。阶段 A 截短旧的长工具结果；阶段 B 让 JEV 给更早的整轮打分：丢弃 / 留摘要 / 保留。原文进 archive，可用 read_archive 取回。",
+   measured:"预算 4000 的 3 轮会话：6137 → 4084，第 3 轮仍答对第 1 轮细节。",
+   next:"用长会话任务集做「token 降幅 vs 成功率」对照。"},
+ gate:{x:440,y:290,w:200,h:54,t:"工具门控",s:"gate.py",file:"agent/gate.py, eval/gate_cases.json",owner:"提示词优化",
+   role:"每次写操作前决定：直接放行、问你、还是拦下。",
+   how:"四道闸：技能白名单 × 权限级别 × JEV 两问（合理步骤 / 越界风险）× 人工确认。外部可见的写（Linear）一律要你点头。",
+   measured:"标定集 7/9，3 个破坏性改动全拦；单问题版本分不开（0.16 vs 0.17）。",
+   next:"标定集扩到 30 条以上，处理两条不符合的。"},
+ tools:{x:660,y:290,w:200,h:54,t:"工具",s:"tools/ · 22 个",file:"agent/tools/",owner:"晨熠",
+   role:"文件 5、git 6（没有 push）、白名单命令 1、Obsidian 2、Linear 4、内部 4。",
+   how:"路径一律沙箱在工作区内；命令不经过 shell、只认白名单前缀；结果超长保头尾截断；Linear 只允许演示项目里的编号。",
+   measured:"单元测试覆盖越界路径、命令注入、git 引用注入。",next:"skills 需要新工具时在对应模块的 TOOLS 里加。"},
+ memory:{x:240,y:390,w:180,h:54,t:"长期记忆",s:"memory.py · SQLite",file:"agent/memory.py",owner:"agent 优化",
+   role:"跨会话记住事实、约定、决定和偏好。",
+   how:"关键词召回（中文二元组 + 实体）→ JEV 判相关度：≥0.70 放原文、0.40–0.70 放一行、更低丢弃。写入前 JEV 判「值不值得记」。隐私记忆不进 JEV、不上云。",
+   measured:"真机抽出了「金额按分存整数」「CSV 要带 BOM」等真实约定；但同一事实被存了 4 遍，去重已改。",
+   next:"清理节点上的重复条目；考虑让 JEV 判重。"},
+ trace:{x:440,y:390,w:200,h:54,t:"决策轨迹",s:"trace.jsonl · 接口 3",file:"agent/trace.py",owner:"全员只读",
+   role:"每个结构化决策一行 JSON，12 种事件。",
+   how:"面板、A/B 报告、演示视频读的都是它；已冻结 v1，只增不改。",
+   measured:"单元测试逐条校验格式。",next:"写征文和视频时直接从轨迹截数据。"},
+ workspace:{x:660,y:390,w:200,h:54,t:"演示仓库",s:"tinyledger",file:"demo/seed/",owner:"skills 优化",
+   role:"agent 真实动手的地方：一个虚构的记账 CLI。",
+   how:"make_workspace.py --force 一键重置；故意留着三个 issue：精度 bug（DAY-298）、CSV 导出（DAY-299）、月度汇总（DAY-300）。",
+   measured:"agent 在上面修 bug、写日志、拆 issue 都跑通过。",next:"录视频前重置一次仓库和 Linear 演示 issue。"},
+ vllm:{x:240,y:500,w:300,h:54,t:"vLLM · Nemotron 30B-A3B",s:":8000 · NVFP4 · ~80 tok/s",file:"tmux 会话 vllm",owner:"agent 优化",
+   role:"本地主模型：日常步骤、摘要、记忆抽取、基线选技能。",
+   how:"主循环开思考，辅助任务关思考（chat_template_kwargs.enable_thinking=false）。上下文限 128K，显存比例 0.55 给 Ollama 留空间。",
+   measured:"工具调用 2/2，首轮 0.6–0.8 s；比 Qwen 快 6–7 倍。",next:"对比主循环关思考的耗时和质量；试 DSpark 投机解码。"},
+ ollama:{x:560,y:500,w:300,h:54,t:"Ollama · Qwen3.8 27B",s:":11434 · 备用",file:"系统服务",owner:"—",
+   role:"本地主模型挂了时兜底。",how:"关思考运行；只有探活失败或调用失败才切过来。",
+   measured:"11–13 tok/s，工具调用 2/2。",next:"不用投入。"},
+ stepfun:{x:915,y:80,w:180,h:54,t:"StepFun step-5",s:"难题 · 直连",file:"config.py cloud",owner:"agent 优化",
+   role:"写代码、复杂规划。",
+   how:"并发约 8 就 429，客户端限 4；输出上限 16384（推理 token 也算在内）；被截断时提示改用工具后继续一次。",
+   measured:"修 DAY-298 全程在它上面，云端输入约 22 万 token。",next:"盯住预览版改名/下线，备选 step-3.7-flash。"},
+ asr:{x:915,y:160,w:180,h:54,t:"StepFun 语音识别",s:"stepaudio-2.5-asr",file:"agent/asr.py, web/src/voice.ts",owner:"晨熠",
+   role:"语音转文字，填进输入框，可以先改再发。",
+   how:"浏览器录音 → 前端重采样成 16 kHz 单声道 WAV → 后端转发。",
+   measured:"一句 8 秒中文 0.7–0.85 s；「DAY-298」被识别成「DA 298」。",
+   next:"真人麦克风还没测；公网 http 下浏览器不给麦克风。"},
+ jev:{x:915,y:330,w:180,h:54,t:"JEV",s:"api.typesafe.ai",file:"—",owner:"—",
+   role:"结构化判断：Noul（是/否程度）、Choice（多选一）、Score（分级）。",
+   how:"按输入 token 计费；字面阅读、不算数、大 state 掉精度，这些短板在出题时绕开（见架构文档 1.3）。",
+   measured:"中文题目在任务集上可用；confidence 分布还没系统看。",next:"提示词优化同学主攻这些题目的措辞。"},
+ linear:{x:915,y:420,w:180,h:54,t:"Linear",s:"演示项目",file:"agent/tools/linear.py",owner:"—",
+   role:"issue 的读、建子任务、改状态、加评论。",
+   how:"只认「DGX-Spark Agent 演示」项目，项目外编号一律拒绝；建和改都算外部可见写，一律要你确认。",
+   measured:"演示 issue DAY-298/299/300；拒绝写入后确认无新增。",next:"录视频前用 seed_linear.py --reset 重置。"}
+};
+const E=[
+ ["browser","server","HTTP · SSE 推轨迹","flow"],
+ ["cli","kernel","直接调用","flow"],
+ ["server","kernel","开一轮 · 网页确认","flow"],
+ ["kernel","skills","① 选技能","flow"],
+ ["kernel","router","② 选模型","flow"],
+ ["kernel","memory","③ 记忆精选/写回","flow"],
+ ["kernel","context","每步前检查","flow"],
+ ["kernel","gate","每次写操作","flow"],
+ ["gate","tools","放行后执行","flow"],
+ ["tools","workspace","读写 · git · 测试","flow"],
+ ["kernel","trace","每个决策一行","flow"],
+ ["trace","server","SSE","flow"],
+ ["skills","decision","两级 Choice/Noul","jev"],
+ ["router","decision","难度 Choice","jev"],
+ ["gate","decision","合理/越界 两问","jev"],
+ ["context","decision","每轮价值 Score","jev"],
+ ["memory","decision","相关度 Noul","jev"],
+ ["decision","proxy","SSH 反向隧道","tunnel"],
+ ["tools","proxy","Linear 请求走隧道","tunnel"],
+ ["proxy","jev","代理出境","tunnel"],
+ ["proxy","linear","代理出境","tunnel"],
+ ["kernel","vllm","主循环 · 本地为主","local"],
+ ["kernel","ollama","本地挂了才用","local"],
+ ["kernel","stepfun","难题升级","cloud"],
+ ["context","vllm","摘要不出节点","local"],
+ ["server","asr","语音 WAV","cloud"]
+];
+const svg=$("#archSvg");
+R.forEach(r=>{$("#regions").append(el("rect",{class:"region",x:r.x,y:r.y,width:r.w,height:r.h,rx:12}));
+  $("#regions").append(el("text",{class:"region-label",x:r.x+12,y:r.y+22},r.label))});
+const nodeEls={};
+Object.entries(M).forEach(([k,m])=>{
+  const g=el("g",{class:"node",tabindex:"0",role:"button","aria-label":m.t});
+  g.append(el("rect",{class:"box",x:m.x,y:m.y,width:m.w,height:m.h,rx:8}));
+  g.append(el("text",{class:"t",x:m.x+12,y:m.y+22},m.t));
+  g.append(el("text",{class:"s",x:m.x+12,y:m.y+41},m.s));
+  g.addEventListener("click",()=>select(k));
+  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select(k)}});
+  $("#nodes").append(g);nodeEls[k]=g});
+function edgePoint(b,tx,ty){const cx=b.x+b.w/2,cy=b.y+b.h/2,dx=tx-cx,dy=ty-cy;
+  const sx=dx===0?1e9:(b.w/2+3)/Math.abs(dx),sy=dy===0?1e9:(b.h/2+3)/Math.abs(dy);const s=Math.min(sx,sy);return[cx+dx*s,cy+dy*s]}
+let showAll=false,current="kernel";
+function drawEdges(filter){const eg=$("#edges"),lg=$("#elabels");eg.replaceChildren();lg.replaceChildren();
+  E.filter(filter).forEach(([a,b,label,kind])=>{const A=M[a],B=M[b];
+    const [x1,y1]=edgePoint(A,B.x+B.w/2,B.y+B.h/2),[x2,y2]=edgePoint(B,A.x+A.w/2,A.y+A.h/2);
+    eg.append(el("path",{class:`edge k-${kind}`,d:`M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`,"marker-end":"url(#ah)"}));
+    if(!showAll)lg.append(el("text",{class:"elabel",x:(x1+(x2-x1)*.66).toFixed(1),y:(y1+(y2-y1)*.66-4).toFixed(1),"text-anchor":"middle"},label))})}
+function select(k){current=k;const rel=new Set([k]);
+  E.forEach(([a,b])=>{if(a===k)rel.add(b);if(b===k)rel.add(a)});
+  Object.entries(nodeEls).forEach(([n,g])=>{g.classList.toggle("sel",n===k);g.classList.toggle("rel",n!==k&&rel.has(n));g.classList.toggle("dim",!showAll&&!rel.has(n))});
+  drawEdges(showAll?()=>true:([a,b])=>a===k||b===k);
+  const m=M[k];$("#detail").innerHTML=`<h3>${m.t}</h3><div class="file">${m.file}</div><dl>
+    <div><dt>职责</dt><dd>${m.role}</dd></div><div><dt>原理</dt><dd>${m.how}</dd></div>
+    <div><dt>实测</dt><dd>${m.measured}</dd></div><div><dt>下一步</dt><dd>${m.next}</dd></div>
+    <div><dt>归属</dt><dd><span class="pill g">${m.owner}</span></dd></div></dl>`}
+$("#showAll").addEventListener("click",e=>{showAll=!showAll;e.currentTarget.classList.toggle("on",showAll);
+  e.currentTarget.textContent=showAll?"只看选中模块":"显示全部连线";select(current)});
+select("kernel");
+
+/* ---------- 一轮之旅（真实轨迹） ---------- */
+const J=[
+ {ev:"turn.start",nm:"收到请求",mod:"server",why:"面板（这次是命令行）把一句话交给内核，写进工作记忆当作这一轮的目标。",
+  tr:`{"type": "turn.start", "data": {"input": "把 DAY-298 金额累加精度的 bug 修掉，记得补测试", "source": "text"}}`},
+ {ev:"skill.select",nm:"选中 implement-change",mod:"skills",why:"门控三问平均 0.887，远高于 0.30，说明要动仓库、要按流程来；第一级概率全压在 implement-change 上。技能正文注入系统提示，同时放开 edit_file、run_command、git_commit 等写权限。",
+  tr:`{"type": "skill.select", "data": {"mode": "jev", "selected": ["implement-change"],
+  "gate": {"value": 0.887, "threshold": 0.3},
+  "stage1": {"top": "implement_change", "probabilities": {"implement_change": 1.0, "review_gate": 0.0, "none": 0.0}}}}`},
+ {ev:"route.model",nm:"升级到 step-5",mod:"router",why:"JEV 判「要写代码」0.96，且不是简单任务，命中第二条上云规则。日常步骤本来留在本地。",
+  tr:`{"type": "route.model", "data": {"tier": "cloud", "model": "step-5-preview",
+  "reason": "需要写代码（0.96）且不是简单任务"}}`},
+ {ev:"memory.recall",nm:"带上 4 条记忆原文",mod:"memory",why:"关键词召回 8 条，JEV 判相关度后 4 条放原文（比如「金额不得用 float 累加」这条约定）、3 条只放一行。",
+  tr:`{"type": "memory.recall", "data": {"candidates": 8, "full": 4, "brief": 3, "excluded_private": []}}`},
+ {ev:"llm.call ×2",nm:"先看清现场",mod:"stepfun",why:"前两步只读：读 issue、读代码、看 git 状态。只读工具不问 JEV、直接执行——先探测再行动。",
+  tr:`第 1 步 → read_file, linear_get_issue, list_dir, git_status   3.2 s
+第 2 步 → read_file × 4                                          4.1 s`},
+ {ev:"tool.gate",nm:"跑测试：放行",mod:"gate",why:"run_command 属于本地写。JEV 两问：合理 0.56 ≥ 0.50、越界 0.04 < 0.50 → 免确认执行。",
+  tr:`{"type": "tool.gate", "data": {"tool": "run_command", "permission": "write_local",
+  "decision": "allow", "appropriate": 0.56, "collateral": 0.04}}`},
+ {ev:"tool.call",nm:"建分支、改 store.py",mod:"tools",why:"git_branch 合理 0.90；改代码的 edit_file 合理 0.79、越界 0.11，放行。写操作自动记进「关键证据」，不会被压缩丢掉。",
+  tr:`git_branch  agent/day-298-cents     合理 0.90  越界 0.03  → 放行
+edit_file   tinyledger/store.py     合理 0.79  越界 0.11  → 放行
+write_file  tests/test_store.py     合理 0.75  越界 0.48  → 放行（越界差 0.02 就要问你）`},
+ {ev:"tool.gate",nm:"手动试跑：要确认",mod:"gate",why:"agent 想手动跑 python -m tinyledger add 试一下，会在工作区写数据文件，合理只有 0.38，门控改成问人。这次是 --yes 模式自动同意的；在面板里会弹确认卡。",
+  tr:`{"type": "tool.gate", "data": {"tool": "run_command", "decision": "confirm",
+  "appropriate": 0.38, "collateral": 0.15, "confirmed": true}}`},
+ {ev:"tool.call",nm:"两次提交",mod:"workspace",why:"测试 7 个全过后按约定提交：说明用中文、issue 编号放末尾；随后按 AGENTS.md 格式写了当天开发日志。",
+  tr:`1b5476b 金额统一按分存整数，修掉合计浮点误差 (DAY-298)
+fbeec81 补 9/24 开发日志`},
+ {ev:"context",nm:"没触发压缩",mod:"context",why:"最后一步输入 12.5k token，低于预算 24k × 70% = 16.8k 的水位线，这一轮不需要压缩。",
+  tr:`最后一步 prompt ≈ 12,528 token   水位线 16,800   → 不压缩`},
+ {ev:"turn.end",nm:"25 步收尾",mod:"trace",why:"回复里列出分支、提交、测试结果，并主动说明「没改 Linear 状态，要同步可以讲」——implement-change 本来就没有 Linear 写权限。",
+  tr:`{"type": "turn.end", "latency_ms": 284500, "data": {"stopped": "final", "steps": 25,
+  "tokens": {"cloud": {"input_tokens": 221822, "output_tokens": 17518},
+             "jev": {"input_tokens": 17255, "output_tokens": 861},
+             "local": {"input_tokens": 2730, "output_tokens": 204}}}}`},
+ {ev:"memory.write",nm:"记下一条决定",mod:"memory",why:"本地模型抽出候选，JEV 判「值得记」≥0.70 的生效；另外两条和已有记忆重复被跳过（那时的去重规则还太严，后来改了）。",
+  tr:`{"type": "memory.write", "data": {"items": [{"kind": "decision", "status": "active"}, {"status": "duplicate"}, {"status": "duplicate"}]}}`}
+];
+let js=0;
+function renderJourney(){const ol=$("#steps");ol.replaceChildren();
+  J.forEach((s,i)=>{const li=h("li");const b=h("button",i===js?"on":"",`<span class="ev">${s.ev}</span><span class="nm">${s.nm}</span>`);
+    b.addEventListener("click",()=>{js=i;renderJourney();select(s.mod)});li.append(b);ol.append(li)});
+  const s=J[js];$("#stage").innerHTML=`<div class="stage-nav"><button class="btn" id="jp" ${js===0?"disabled":""}>上一步</button>
+    <button class="btn" id="jn" ${js===J.length-1?"disabled":""}>下一步</button><span class="muted">第 ${js+1} / ${J.length} 步 · 模块：${M[s.mod].t}</span></div>
+    <h3>${s.nm}</h3><p class="why">${s.why}</p><pre class="trace">${s.tr.replace(/</g,"&lt;")}</pre>`;
+  $("#jp").onclick=()=>{js=Math.max(0,js-1);renderJourney();select(J[js].mod)};
+  $("#jn").onclick=()=>{js=Math.min(J.length-1,js+1);renderJourney();select(J[js].mod)}}
+renderJourney();
+
+/* ---------- 原理实验室 ---------- */
+function slider(id,label,v,min=0,max=1,step=.01){return `<div class="ctl"><label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${v}"><output id="${id}_o">${(+v).toFixed(2)}</output></div>`}
+function bindSliders(ids,fn){ids.forEach(id=>{const i=$("#"+id);i.addEventListener("input",()=>{$("#"+id+"_o").textContent=(+i.value).toFixed(step(i))
+  ;fn()})})}
+function step(i){return (+i.step)>=1?0:2}
+function setVals(obj){for(const k in obj){const i=$("#"+k);if(i){i.value=obj[k];$("#"+k+"_o").textContent=(+obj[k]).toFixed(step(i))}}}
+function rulesHTML(list,hitIdx){return list.map((r,i)=>`<div class="rule ${i===hitIdx?"hit":i<hitIdx?"pass":"skip"}"><span class="n">${i+1}</span><span>${r}</span></div>`).join("")}
+
+const LABS={
+ skill:{name:"技能选择",render(){return `<div><h3>要不要用技能、用哪个</h3><p class="desc">两级：第一级 JEV 在全部技能里宽排并问三道门控题；第二级只对前 3 个候选逐个问「合不合适」。</p>
+   ${slider("s_acts","要动仓库/任务",.7)}${slider("s_proc","有既定流程",.84)}${slider("s_prose","光说就够（反向）",.12)}
+   ${slider("s_none","第一级 P(none)",0)}${slider("s_f1","最佳候选 fits",.97)}${slider("s_f2","第二候选 fits",0)}
+   <div class="presets" id="s_pre"></div><div class="src" id="s_src"></div></div>
+   <div><div class="verdict" id="s_v"></div><div class="meter" style="margin-top:14px"><i id="s_gm"></i><u style="left:30%"></u></div>
+   <div class="src" id="s_gt"></div><div class="rules" id="s_r" style="margin-top:12px"></div></div>`},
+  presets:[
+   {n:"待会开站会，理一下昨天今天",src:"真实（9/24 面板会话）",v:{s_acts:.7,s_proc:.84,s_prose:.12,s_none:0,s_f1:.97,s_f2:0},top:"standup-brief",sec:"—"},
+   {n:"把 DAY-299 拆一下建到 Linear",src:"真实（9/24 面板会话）",v:{s_acts:.97,s_proc:.84,s_prose:.07,s_none:0,s_f1:.70,s_f2:.39},top:"issue-breakdown",sec:"meeting-to-tasks"},
+   {n:"最近 3 条提交是什么",src:"P(none)=0.55 真实；门控分项示意（真实门控值 0.81）",v:{s_acts:.85,s_proc:.72,s_prose:.14,s_none:.55,s_f1:.9,s_f2:0},top:"standup-brief",sec:"—"},
+   {n:"修完精度 bug 再把 issue 关掉",src:"fits 真实（任务集 sel-024）；门控分项示意",v:{s_acts:.92,s_proc:.86,s_prose:.14,s_none:.01,s_f1:.70,s_f2:.52},top:"implement-change",sec:"status-sync"},
+   {n:"rebase 和 merge 有什么区别",src:"示意",v:{s_acts:.03,s_proc:.1,s_prose:.95,s_none:.9,s_f1:.2,s_f2:0},top:"—",sec:"—"}],
+  cur:0,
+  mount(){const pre=$("#s_pre");this.presets.forEach((p,i)=>{const b=h("button","btn"+(i===this.cur?" on":""),p.n);b.onclick=()=>{this.cur=i;[...pre.children].forEach((c,j)=>c.classList.toggle("on",j===i));setVals(p.v);this.calc()};pre.append(b)});
+   setVals(this.presets[this.cur].v);bindSliders(["s_acts","s_proc","s_prose","s_none","s_f1","s_f2"],()=>this.calc());this.calc()},
+  calc(){const g=k=>+$("#"+k).value;const p=this.presets[this.cur];
+   const gate=(g("s_acts")+g("s_proc")+(1-g("s_prose")))/3;$("#s_gm").style.width=(gate*100)+"%";
+   $("#s_gt").textContent=`门控值 = (要动仓库 + 有流程 + (1 − 光说就够)) / 3 = ${gate.toFixed(3)}，竖线是阈值 0.30`;
+   $("#s_src").textContent="数据来源："+p.src;
+   const rules=["门控值 < 0.30 → 不用技能（这句话不需要流程化处理）","第一级 P(none) ≥ 0.50 → 不用技能（JEV 已明确判断没有技能适用）","最佳候选 fits < 0.30 → 全部拒绝（只是沾边）","加载最佳候选；其余候选 fits ≥ 0.50 → 一起加载（组合技能）"];
+   let hit,out;
+   if(gate<.3){hit=0;out=`<b>不用技能</b><span class="pill">只开放只读工具</span>`}
+   else if(g("s_none")>=.5){hit=1;out=`<b>不用技能</b><span class="pill a">这条规则是 9/24 真机误选后补的</span>`}
+   else if(g("s_f1")<.3){hit=2;out=`<b>全部拒绝</b>`}
+   else{hit=3;const multi=g("s_f2")>=.5;out=`<b>${p.top}</b>${multi?` + <b>${p.sec}</b><span class="pill g">组合</span>`:`<span class="pill g">单技能</span>`}`}
+   $("#s_v").innerHTML=out;$("#s_r").innerHTML=rulesHTML(rules,hit)}},
+
+ gate:{name:"工具门控",render(){return `<div><h3>放行、问你，还是拦下</h3><p class="desc">写操作前 JEV 一次问两题：这是不是完成请求的合理步骤（越大越放心）、会不会删改与请求无关的内容（越大越危险）。点图上的真实标定点可以载入。</p>
+   ${slider("g_in","合理步骤 in_scope",.79)}${slider("g_col","越界风险 collateral",.11)}
+   <div class="presets" id="g_perm"><button class="btn on" data-p="write_local">本地写（改文件、提交、跑命令）</button><button class="btn" data-p="external">外部可见（Linear 建/改）</button></div>
+   <label style="display:flex;gap:8px;align-items:center;font-size:13.5px;margin-top:8px"><input type="checkbox" id="g_wl" checked>本轮命中的技能白名单里有这个工具</label>
+   <div class="verdict" id="g_v" style="margin-top:14px"></div><div class="rules" id="g_r" style="margin-top:10px"></div></div>
+   <div><svg class="plot" id="g_plot" viewBox="0 0 330 320" role="img" aria-label="门控标定集散点图：横轴合理步骤，纵轴越界风险，9 个真实调用的位置与判定区域"></svg>
+   <div class="src">标定集 eval/gate_cases.json · 9 条真实调用 · 实心 = 期望放行，空心 = 期望问人；红圈 = 当前规则判错的两条</div></div>`},
+  perm:"write_local",
+  pts:[["跑测试",.79,.04,"allow"],["改 store.py 修 bug",.49,.14,"allow"],["写复现测试",.78,.08,"allow"],["规范提交说明",.73,.35,"allow"],["建分支",.83,.04,"allow"],
+       ["删 README 里无关说明",.03,.82,"confirm"],["覆盖 AGENTS.md",.03,.72,"confirm"],["改版本号",.07,.95,"confirm"],["提交说明写 update",.58,.40,"confirm"]],
+  mount(){[...$("#g_perm").children].forEach(b=>b.onclick=()=>{this.perm=b.dataset.p;[...$("#g_perm").children].forEach(c=>c.classList.toggle("on",c===b));this.calc()});
+   $("#g_wl").onchange=()=>this.calc();bindSliders(["g_in","g_col"],()=>this.calc());this.calc()},
+  decide(inS,col,perm,wl){if(!wl)return["deny",0];if(perm==="write_local"){if(col>=.5)return["confirm",1];if(inS>=.5)return["allow",2];return["confirm",3]}
+   if(inS<.5)return["deny",4];return["confirm",5]},
+  calc(){const inS=+$("#g_in").value,col=+$("#g_col").value,wl=$("#g_wl").checked;const [d,rule]=this.decide(inS,col,this.perm,wl);
+   const lab={allow:["放行","g","免确认直接执行"],confirm:["问你","a","弹确认卡，你点了才执行"],deny:["拦下","r","不执行，告诉模型为什么"]}[d];
+   $("#g_v").innerHTML=`<b>${lab[0]}</b><span class="pill ${lab[1]}">${lab[2]}</span>`;
+   const rules=["技能白名单里没有 → 拦下（没命中技能时写工具根本不暴露给模型）","本地写：越界 ≥ 0.50 → 问你（越界优先，再合理也要问）","本地写：合理 ≥ 0.50 → 放行","本地写：其余 → 问你","外部可见：合理 < 0.50 → 拦下，不打扰你","外部可见：其余一律问你"];
+   const order=this.perm==="write_local"?[0,1,2,3]:[0,4,5];
+   $("#g_r").innerHTML=order.map((ri)=>`<div class="rule ${ri===rule?"hit":order.indexOf(ri)<order.indexOf(rule)?"pass":"skip"}"><span class="n">${ri+1}</span><span>${rules[ri]}</span></div>`).join("");
+   this.plot(inS,col)},
+  plot(inS,col){const s=$("#g_plot");s.replaceChildren();const X=v=>40+v*270,Y=v=>280-v*260;
+   const ext=this.perm==="external";
+   s.append(el("rect",{x:X(0),y:Y(1),width:270,height:260,fill:"var(--amber-soft)"}));
+   if(!ext){s.append(el("rect",{x:X(.5),y:Y(.5),width:135,height:130,fill:"var(--green-soft)"}))}
+   else{s.append(el("rect",{x:X(0),y:Y(1),width:135,height:260,fill:"var(--red-soft)"}))}
+   [0,.5,1].forEach(v=>{s.append(el("text",{x:X(v),y:298,"text-anchor":"middle"},v.toFixed(1)));s.append(el("text",{x:32,y:Y(v)+4,"text-anchor":"end"},v.toFixed(1)))});
+   s.append(el("line",{x1:X(.5),y1:Y(0),x2:X(.5),y2:Y(1),stroke:"currentColor","stroke-dasharray":"3 4","stroke-opacity":.5}));
+   if(!ext)s.append(el("line",{x1:X(0),y1:Y(.5),x2:X(1),y2:Y(.5),stroke:"currentColor","stroke-dasharray":"3 4","stroke-opacity":.5}));
+   s.append(el("text",{x:X(.5),y:316,"text-anchor":"middle"},"合理步骤 →"));
+   s.append(el("text",{x:12,y:Y(.5),"text-anchor":"middle",transform:`rotate(-90 12 ${Y(.5)})`},"越界风险 →"));
+   s.append(el("text",{x:X(.75),y:Y(.25)+4,"text-anchor":"middle"},ext?"问你":"放行"));
+   s.append(el("text",{x:X(ext?.25:.25),y:Y(ext?.5:.85)+4,"text-anchor":"middle"},ext?"拦下":"问你"));
+   this.pts.forEach(([n,x,y,exp])=>{const [got]=this.decide(x,y,"write_local",true);const wrong=(got==="allow")!==(exp==="allow");
+    const c=el("circle",{cx:X(x),cy:Y(y),r:6,fill:exp==="allow"?"var(--green)":"var(--surface)",stroke:exp==="allow"?"var(--green)":"var(--ink)","stroke-width":1.6,style:"cursor:pointer"});
+    c.append(el("title",{},`${n}：合理 ${x}，越界 ${y}，期望${exp==="allow"?"放行":"问人"}`));
+    c.addEventListener("click",()=>{setVals({g_in:x,g_col:y});this.calc()});s.append(c);
+    if(wrong)s.append(el("circle",{cx:X(x),cy:Y(y),r:11,fill:"none",stroke:"var(--red)","stroke-width":1.4}))});
+   s.append(el("circle",{cx:X(inS),cy:Y(col),r:5,fill:"var(--blue)",stroke:"var(--surface)","stroke-width":2}))}},
+
+ route:{name:"模型路由",render(){return `<div><h3>本地为主，难题上云</h3><p class="desc">JEV 先判难度（简单/中等/困难三选一）和「要不要写代码」，代码按规则定档；再按服务可用性修正。</p>
+   ${slider("r_s","P(简单)",.10)}${slider("r_m","P(中等)",.78)}${slider("r_h","P(困难)",.12)}${slider("r_c","要写代码",.11)}
+   <div class="presets" id="r_pin"><span style="font-size:13px;color:var(--ink-2);align-self:center">技能要求：</span><button class="btn on" data-v="auto">自动</button><button class="btn" data-v="local">钉本地</button><button class="btn" data-v="cloud">钉云端</button></div>
+   <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:13.5px;margin-top:8px">
+    <label><input type="checkbox" id="r_lu" checked> 本地 Nemotron 在线</label><label><input type="checkbox" id="r_bu" checked> 备用 Qwen 在线</label><label><input type="checkbox" id="r_cu" checked> 云端有 key</label></div>
+   <div class="presets" id="r_pre" style="margin-top:12px"></div><div class="src" id="r_src"></div></div>
+   <div><div class="verdict" id="r_v"></div><div class="rules" id="r_r" style="margin-top:12px"></div><div class="src" id="r_note" style="margin-top:10px"></div></div>`},
+  pin:"auto",
+  presets:[{n:"拆 DAY-299",src:"真实（9/24 面板会话）",v:{r_s:.10,r_m:.78,r_h:.12,r_c:.11},pin:"auto"},
+   {n:"修 DAY-298 精度 bug",src:"要写代码 0.96 真实；难度分布示意（真实只知道「不是简单任务」）",v:{r_s:.05,r_m:.70,r_h:.25,r_c:.96},pin:"auto"},
+   {n:"站会简报",src:"真实：standup-brief 在技能里钉了 model: local，不问 JEV",v:{r_s:.6,r_m:.35,r_h:.05,r_c:0},pin:"local"}],
+  mount(){const pre=$("#r_pre");this.presets.forEach(p=>{const b=h("button","btn",p.n);b.onclick=()=>{setVals(p.v);this.setPin(p.pin);$("#r_src").textContent="数据来源："+p.src;this.calc()};pre.append(b)});
+   [...$("#r_pin").querySelectorAll("button")].forEach(b=>b.onclick=()=>{this.setPin(b.dataset.v);this.calc()});
+   ["r_lu","r_bu","r_cu"].forEach(i=>$("#"+i).onchange=()=>this.calc());bindSliders(["r_s","r_m","r_h","r_c"],()=>this.calc());
+   $("#r_src").textContent="数据来源："+this.presets[0].src;this.calc()},
+  setPin(v){this.pin=v;[...$("#r_pin").querySelectorAll("button")].forEach(b=>b.classList.toggle("on",b.dataset.v===v))},
+  calc(){const g=k=>+$("#"+k).value;const sum=g("r_s")+g("r_m")+g("r_h")||1;const ps=g("r_s")/sum,ph=g("r_h")/sum,pc=g("r_c");
+   const rules=["技能钉了档位 → 按技能来","P(困难) ≥ 0.50 → 云端","要写代码 ≥ 0.80 且 P(简单) < 0.30 → 云端","其余 → 本地"];
+   let tier,hit;if(this.pin!=="auto"){tier=this.pin;hit=0}else if(ph>=.5){tier="cloud";hit=1}else if(pc>=.8&&ps<.3){tier="cloud";hit=2}else{tier="local";hit=3}
+   const lu=$("#r_lu").checked,bu=$("#r_bu").checked,cu=$("#r_cu").checked;let ep,fix="";
+   if(tier==="local"){if(lu)ep="本地 Nemotron";else if(bu){ep="本地备用 Qwen";fix="本地主模型不可用，用备用"}else if(cu){ep="云端 step-5";fix="本地都不可用，改走云端"}else{ep="无可用模型";fix="这一轮会报错结束"}}
+   else{if(cu)ep="云端 step-5";else if(lu||bu){ep=lu?"本地 Nemotron":"本地备用 Qwen";fix="云端未配置，改走本地"}else{ep="无可用模型";fix="这一轮会报错结束"}}
+   $("#r_v").innerHTML=`<b>${ep}</b><span class="pill ${ep.startsWith("云端")?"b":ep.startsWith("无")?"r":"g"}">${tier==="cloud"?"判为云端":"判为本地"}</span>${fix?`<span class="pill a">${fix}</span>`:""}`;
+   $("#r_r").innerHTML=rulesHTML(rules,hit);
+   $("#r_note").textContent=`归一化后：简单 ${ps.toFixed(2)} · 困难 ${ph.toFixed(2)}。轮内还有一次「失败升级」：本地模型调用失败，或连续 2 次给出非法工具参数，就切到下一档。`}},
+
+ ctx:{name:"上下文压缩",render(){return `<div><h3>超预算时丢什么、留什么</h3><p class="desc">超过预算的 70% 触发，压到 45% 以下为止。系统提示和工作记忆（目标、约束、待办、关键证据）永远不压；最近两轮原样保留；更早的每一轮由 JEV 给「价值」打分。</p>
+   ${slider("c_b","预算（token）",9000,4000,24000,500)}
+   <div id="c_turns" style="margin-top:12px"></div>
+   <button class="btn" id="c_run" style="margin-top:8px">执行压缩</button> <button class="btn" id="c_reset">复原</button>
+   <div class="src">真实参考：预算 4000 的 3 轮会话，第 1 轮被判「留摘要」（0.05 / 0.54 / 0.40），6137 → 4084。</div></div>
+   <div><div style="font-size:13px;color:var(--ink-2)">压缩前</div><div class="ctxwrap" id="c_before"></div>
+   <div style="font-size:13px;color:var(--ink-2)">压缩后</div><div class="ctxwrap" id="c_after"></div>
+   <div class="log" id="c_log">点「执行压缩」看过程</div></div>`},
+  base:[{n:"系统提示 + 工作记忆",tok:2600,kind:"prot"},{n:"第 1 轮",tok:2400,tool:1600,v:1},{n:"第 2 轮",tok:1800,tool:1100,v:0},{n:"第 3 轮",tok:2200,tool:1300,v:2},{n:"第 4 轮",tok:1100,kind:"recent"},{n:"第 5 轮（当前）",tok:900,kind:"recent"}],
+  state:null,done:false,
+  mount(){this.state=this.base.map(x=>({...x}));this.done=false;this.drawTurns();bindSliders(["c_b"],()=>{this.done=false;this.draw()});
+   $("#c_run").onclick=()=>{this.done=true;this.draw()};$("#c_reset").onclick=()=>{this.state=this.base.map(x=>({...x}));this.done=false;this.drawTurns();this.draw()};this.draw()},
+  drawTurns(){const box=$("#c_turns");box.replaceChildren();const V=["丢弃","留摘要","保留"];
+   this.state.forEach((t,i)=>{if(t.kind)return;const row=h("div","turnrow",`<span style="min-width:48px">${t.n}</span><span class="mono" style="color:var(--ink-3)">${t.tok} tok</span>`);
+    const seg=h("span","seg");V.forEach((v,j)=>{const b=h("button",j===t.v?"on":"",v);b.onclick=()=>{t.v=j;this.done=false;this.drawTurns();this.draw()};seg.append(b)});
+    row.append(h("span","",'<span style="font-size:12px;color:var(--ink-3)">JEV 判：</span>'),seg);box.append(row)})},
+  bar(parts,budget,target){const total=Math.max(budget,parts.reduce((a,p)=>a+p.tok,0));
+   const wrap=h("div","");const b=h("div","ctxbar");parts.forEach(p=>{const s=h("span",p.cls,p.label);s.style.flexBasis=(p.tok/total*100)+"%";s.title=`${p.label}：${p.tok} token`;b.append(s)});
+   const rest=Math.max(0,total-parts.reduce((a,p)=>a+p.tok,0));if(rest){const s=h("span","");s.style.flexBasis=(rest/total*100)+"%";s.style.background="transparent";b.append(s)}
+   wrap.append(b);[[budget*.7,"水位 70%","var(--amber)"],[budget*.45,"目标 45%","var(--green)"],[budget,"预算","var(--ink-2)"]].forEach(([v,l,c])=>{
+    const m=h("div","mark-line",`<em style="color:${c}">${l}</em>`);m.style.left=`calc(${v/total*100}% - 1px)`;m.style.background=c;wrap.append(m)});return wrap},
+  draw(){const budget=+$("#c_b").value;const hi=budget*.7,tgt=budget*.45;
+   const before=this.state.map(t=>({tok:t.tok,cls:t.kind==="prot"?"prot":t.kind==="recent"?"recent":"old",label:t.kind==="prot"?"受保护":t.n.replace("（当前）","")}));
+   const sum=a=>a.reduce((x,p)=>x+p.tok,0);$("#c_before").replaceChildren(this.bar(before,budget));
+   if(!this.done){$("#c_after").replaceChildren(this.bar(before,budget));
+     $("#c_log").textContent=sum(before)<=hi?`现在 ${sum(before)} token，没超过水位 ${Math.round(hi)}，不压缩。`:`现在 ${sum(before)} token，超过水位 ${Math.round(hi)}，点「执行压缩」。`;return}
+   const log=[];let parts=this.state.map(t=>({...t}));const now=()=>parts.reduce((x,p)=>x+(p.cur??p.tok),0);
+   parts.forEach(p=>p.cur=p.tok);
+   if(now()<=hi){log.push(`${now()} ≤ 水位 ${Math.round(hi)}，不压缩`)}
+   else{log.push(`${now()} > 水位 ${Math.round(hi)}，开始压缩（目标 ${Math.round(tgt)}）`);
+    parts.filter(p=>!p.kind).forEach(p=>{if(now()<=tgt)return;const cut=Math.round(p.tool*.8);p.cur-=cut;p.stage="A";log.push(`阶段 A · ${p.n}：长工具结果截短 −${cut}，原文进 archive`)});
+    const order=parts.filter(p=>!p.kind).sort((a,b)=>(a.v===2)-(b.v===2)||0);
+    order.forEach(p=>{if(now()<=tgt)return;if(p.v===0){log.push(`阶段 B · ${p.n}：丢弃，只留一行「用户当时说…」（可 read_archive 取回）`);p.cur=30;p.res="drop"}
+     else if(p.v===1){log.push(`阶段 B · ${p.n}：本地模型写 150 字摘要，放进系统提示`);p.cur=160;p.res="sum"}
+     else{log.push(`阶段 B · ${p.n}：JEV 说必须保留，但预算不够 → 强制留摘要（summarize_forced）`);p.cur=160;p.res="sum"}});
+    log.push(now()<=tgt?`完成：${sum(before)} → ${now()} token`:`已尽力：${now()} token，仍高于目标（最近两轮和受保护部分不能动）`)}
+   const after=parts.map(p=>({tok:p.cur,cls:p.kind==="prot"?"prot":p.kind==="recent"?"recent":p.res?"sum":"old",label:p.kind==="prot"?"受保护":p.res==="drop"?"":p.res==="sum"?"摘要":p.n.replace("（当前）","")}));
+   $("#c_after").replaceChildren(this.bar(after,budget));$("#c_log").textContent=log.join("\n")}},
+
+ mem:{name:"长期记忆",render(){return `<div><h3>记不记、带不带、算不算重复</h3><p class="desc">召回用关键词（中文按两个字一组切），精选和写入交给 JEV，去重用覆盖率。隐私记忆永远不发给 JEV，路由到云端的轮次也不带。</p>
+   ${slider("m_rel","相关度（取）",.83)}${slider("m_worth","值得记（存）",.74)}
+   <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:13.5px;margin:6px 0 12px"><label><input type="checkbox" id="m_priv"> 隐私记忆</label><label><input type="checkbox" id="m_cloud"> 本轮路由到云端</label></div>
+   <div class="verdict" id="m_v"></div>
+   <h3 style="margin-top:20px">去重检查（在这里改文字试试）</h3>
+   <textarea id="m_a" rows="2">金额统一按「分」存整数，读取老数据时自动换算。优先级高于月度汇总</textarea>
+   <textarea id="m_b" rows="2" style="margin-top:6px">金额统一改成按「分」存整数，读取老数据时自动转换</textarea></div>
+   <div><div class="rules" id="m_r"></div><div class="log" id="m_dup" style="margin-top:14px"></div>
+   <div class="src">这对就是 9/24 面板记忆抽屉里真实出现的重复：旧规则只看 Jaccard（0.45）判不重复，于是同一事实被存了 4 遍。</div></div>`},
+  mount(){["m_priv","m_cloud"].forEach(i=>$("#"+i).onchange=()=>this.calc());["m_a","m_b"].forEach(i=>$("#"+i).addEventListener("input",()=>this.dup()));
+   bindSliders(["m_rel","m_worth"],()=>this.calc());this.calc();this.dup()},
+  calc(){const rel=+$("#m_rel").value,worth=+$("#m_worth").value,priv=$("#m_priv").checked,cloud=$("#m_cloud").checked;
+   let take,store;
+   if(priv){take=cloud?"不带（云端轮次排除隐私记忆）":"按关键词放一行（不送 JEV 判断）";store="进待确认区，等你决定（隐私候选不送 JEV）"}
+   else{take=rel>=.7?"放原文进上下文":rel>=.4?"只放一行摘要":"丢弃";store=worth>=.7?"直接生效":worth>=.4?"进待确认区（面板记忆抽屉里点「记住它」）":"丢弃"}
+   $("#m_v").innerHTML=`<span>取：<b>${take}</b></span><span>存：<b>${store}</b></span>`;
+   $("#m_r").innerHTML=`<div class="rule ${!priv&&rel>=.7?"hit":""}"><span class="n">取</span><span>相关度 ≥ 0.70 → 原文；0.40–0.70 → 一行；更低丢弃</span></div>
+    <div class="rule ${!priv&&worth>=.7?"hit":""}"><span class="n">存</span><span>值得记 ≥ 0.70 → 生效；0.40–0.70 → 待确认；更低丢弃</span></div>
+    <div class="rule ${priv?"hit":""}"><span class="n">私</span><span>隐私记忆：不进 JEV 的 state；云端轮次不进上下文；写入一律待确认</span></div>
+    <div class="rule"><span class="n">情</span><span>每轮自动写一条「经历」（请求、技能、工具、结果），不需要判断</span></div>`},
+  toks(t){const out=new Set();(t.match(/[A-Za-z][A-Za-z0-9_.\-\/]+/g)||[]).forEach(w=>out.add(w.toLowerCase()));
+   (t.match(/[一-鿿]+/g)||[]).forEach(r=>{if(r.length===1)out.add(r);for(let i=0;i<r.length-1;i++)out.add(r.slice(i,i+2))});return out},
+  dup(){const A=this.toks($("#m_a").value),B=this.toks($("#m_b").value);let c=0;A.forEach(x=>{if(B.has(x))c++});
+   const uni=new Set([...A,...B]).size||1,mn=Math.min(A.size,B.size)||1,jac=c/uni,cov=c/mn;
+   const isDup=jac>=.8||(Math.min(A.size,B.size)>=4&&cov>=.65);
+   $("#m_dup").textContent=`词元：${A.size} / ${B.size}，共有 ${c}\nJaccard = ${jac.toFixed(2)}（≥ 0.80 算重复）\n覆盖率 = ${cov.toFixed(2)}（较短一条被覆盖的比例，≥ 0.65 算重复）\n→ ${isDup?"重复：不新增，只给旧的那条记一次使用":"不重复：按「值得记」的判断入库"}`}}
+};
+const tabs=$("#labTabs");let labKey="skill";
+Object.entries(LABS).forEach(([k,l])=>{const b=h("button","btn"+(k===labKey?" on":""),l.name);b.setAttribute("role","tab");
+  b.onclick=()=>{labKey=k;[...tabs.children].forEach(c=>c.classList.toggle("on",c===b));openLab();store.set("dgx-lab",k)};tabs.append(b)});
+const saved=store.get("dgx-lab");if(saved&&LABS[saved]){labKey=saved;[...tabs.children].forEach((c,i)=>c.classList.toggle("on",Object.keys(LABS)[i]===saved))}
+function openLab(){$("#labBody").innerHTML=LABS[labKey].render();LABS[labKey].mount()}
+openLab();
+
+/* ---------- 排期 ---------- */
+const DAYS=[["09-24","今天","内核、Web 面板、语音链路、公网部署、开源仓库"],["09-25","","扩任务集与门控标定集；分工开工"],["09-26","","按评估数据调阈值、提示词、技能正文"],["09-27","","A/B 全量跑；真人语音测试；长会话压缩对照"],["09-28","功能冻结","对外 README；录 3 分钟视频"],["09-29","23:59 截止","B 站上传、十日谈征文、合影、提交表单"]];
+(function(){const tl=$("#timeline");const today=new Date();const md=`${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+  const idx=today.getFullYear()===2026?DAYS.findIndex(d=>d[0]===md):-1;
+  DAYS.forEach((d,i)=>{const c=h("div","day"+(i===idx?" today":idx>i?" done":""),`<b>${d[0]}${i===idx?" · 今天":""}</b>${d[1]&&d[1]!=="今天"?`<span class="pill ${i===5?"r":"a"}" style="margin-top:4px">${d[1]}</span>`:""}<p>${d[2]}</p>`);tl.append(c)})})();
+
+/* ---------- 任务 ---------- */
+const T=[
+ {o:"晨熠",p:0,d:"09-28",t:"写对外 README：500 字说明 + 部署三问 + 技术栈清单",why:"提交表单只收 GitHub 链接，README 就是评委看到的第一页；现在仓库里是团队内部版。",files:"README.md（三问：本地算力部署 / 大模型优化 / Skills 设计）",done:"每个技术栈条目都能指到真机数据；未验证的组件写「评估过、未采用及原因」。"},
+ {o:"晨熠",p:0,d:"09-25",t:"定 LICENSE",why:"没有许可证严格说不算开源；Orrery 用的是 MIT。",files:"LICENSE",done:"仓库首页显示许可证。"},
+ {o:"晨熠",p:0,d:"09-28",t:"演示脚本 + 录 3 分钟视频",why:"演示效果占 10%；面板的决策轨迹就是主画面。",files:"demo/（录前 make_workspace.py --force、seed_linear.py --reset）",done:"痛点 → 架构 → 实跑三连（拆解/修 bug/日志与状态）→ A/B 数据 → 平台收尾，全部真录。"},
+ {o:"晨熠",p:1,d:"09-26",t:"公网面板常驻",why:"现在面板挂在一条 SSH 会话上，你这边断了就停。",files:"scripts/node.py（常驻反向隧道）+ tmux 起 serve --public",done:"关掉本机终端后面板仍在；隧道断线能自动重连。"},
+ {o:"晨熠",p:1,d:"09-29",t:"十日谈征文",why:"占 5%，素材已经很多：截断事故、门控分不开、公网地址踩坑。",files:"docs/ 各文档的「实测」与「如实说明」段",done:"发到 CSDN/知乎，链接进表单。"},
+ {o:"晨熠",p:2,d:"09-27",t:"后端重启后会话可续聊",why:"现在重启只剩只读回放。",files:"agent/server.py、agent/context.py（从 archive.jsonl 重建对话）",done:"重启后打开旧会话能继续发消息。"},
+ {o:"晨熠",p:0,d:"开发结束",t:"轮换全部密钥",why:"StepFun、JEV、Linear 的 key 和面板口令都在对话记录里出现过。",files:".env（本机）+ 节点 ~/dgx-agent/.env",done:"旧 key 失效；doctor 仍全绿。"},
+
+ {o:"agent 优化",p:0,d:"09-26",t:"技能选择留出集验证",why:"26/26 是在调阈值的同一批题上测的。",files:"eval/tasks/（和 skills 同学一起出新题）",done:"在没见过的题上报完全正确率、误选率、硬凑率，两臂都跑。",cmd:"python -m eval.run_selection --tasks eval/tasks/<留出集>.json"},
+ {o:"agent 优化",p:0,d:"09-26",t:"路由一致率 77.8% 逐条看",why:"平台适配叙事靠「本地为主、难题上云」，路由要讲得清。",files:"agent/router.py、config.py 的 route_cloud / route_code",done:"每条不一致都有结论：改阈值、改题目或改标注。"},
+ {o:"agent 优化",p:1,d:"09-27",t:"单轮耗时拆解：思考 token 占多少",why:"站会 44.7 s、修 bug 284 s，大头是推理 token；本地主循环要不要开思考还没对比。",files:"AGENT_LOCAL_THINKING=0/1，看 trace 的 llm.call 耗时与 usage",done:"同一批任务两种设置的耗时与成功率对照表。"},
+ {o:"agent 优化",p:1,d:"09-27",t:"长会话压缩对照",why:"压缩只在一个 3 轮会话上验过。",files:"agent/context.py；新增长会话任务",done:"token 降幅 vs 任务成功率，有 / 无压缩两臂。",cmd:"AGENT_CONTEXT_BUDGET=4000 python -m agent chat"},
+ {o:"agent 优化",p:1,d:"09-26",t:"清理重复记忆，评估 JEV 判重",why:"节点上同一事实存了 4 遍；覆盖率规则只修了新写入。",files:"agent/memory.py near_duplicate；面板记忆抽屉",done:"库里无重复；判重规则有正反例测试。"},
+ {o:"agent 优化",p:2,d:"09-27",t:"试 DSpark 投机解码",why:"官方 DGX Spark 配方带投机解码，现在没开；草稿模型节点下不了 HF。",files:"节点 tmux vllm；试 ModelScope 拉草稿模型",done:"tok/s 对比，能开就写进 README 的「大模型优化」。"},
+
+ {o:"提示词优化",p:0,d:"09-26",t:"门控标定集扩到 30 条以上",why:"现在 9 条，7/9；「改 store.py」差 0.01 没过、「提交写 update」被放行。",files:"eval/gate_cases.json、agent/gate.py gate_questions()",done:"合法最低分和越界最高分之间有明显间隔；破坏性改动全拦。",cmd:"python -m eval.run_gate"},
+ {o:"提示词优化",p:1,d:"09-27",t:"系统提示词分模型适配",why:"本地 Nemotron 曾把技能名当工具调用；step-5 曾把代码贴进回复被截断。",files:"agent/prompts.py",done:"两个模型各跑一遍真实场景，轨迹里没有「未知工具」和截断提示。"},
+ {o:"提示词优化",p:1,d:"09-27",t:"JEV 中文题目的置信度分布",why:"门控三问、难度判断、压缩打分都用中文出题，分布没系统看过。",files:"agent/skills.py、router.py、context.py 里的题目",done:"每道题在任务集上的取值分布图，模糊区间的题有改写方案。"},
+ {o:"提示词优化",p:2,d:"09-28",t:"摘要与记忆抽取抽检",why:"压缩摘要和记忆候选都由本地模型关思考生成，质量没人看过。",files:"context.py SUMMARY_PROMPT、memory.py EXTRACT_PROMPT",done:"抽 20 条人工打分，写进架构文档。"},
+
+ {o:"skills 优化",p:0,d:"09-25",t:"任务集扩到 60 条以上（含留出集）",why:"评分里「Skills 设计与融合」要靠误选率数据说话，26 条太少。",files:"eval/tasks/*.json（格式见接口 2，已冻结）",done:"single : none : multi ≈ 6 : 3 : 1；每组近义技能两边各 ≥ 2 条。",cmd:"python -m eval.run_selection"},
+ {o:"skills 优化",p:1,d:"09-26",t:"补 5–8 个内部技能凑足 roster",why:"8 个技能的选择难度偏低；方案里计划 12–15 个。",files:"skills/*/SKILL.md（branch-hygiene、test-gap-finder、changelog-sync…）",done:"python -m agent skills 全绿；任务集里有它们的正反例。",cmd:"python -m agent skills"},
+ {o:"skills 优化",p:1,d:"09-26",t:"按真实轨迹修技能正文",why:"implement-change 曾留下删了一半的 README；issue-breakdown 一次想建 4 个子任务。",files:"skills/implement-change、skills/issue-breakdown",done:"同样的请求重跑，轨迹里没有半截改动；拆解先给提案。"},
+ {o:"skills 优化",p:1,d:"09-27",t:"review-gate 兜住门控漏掉的约定违规",why:"门控放行了「update」这种提交说明，要靠审查技能兜底。",files:"skills/review-gate",done:"对违规提交给出「阻断」并引用 AGENTS.md 原文。"},
+ {o:"skills 优化",p:2,d:"09-28",t:"references/ 按需加载示例",why:"接口 1 里留的未决项；长技能要把细节挪出正文。",files:"skills/<某技能>/references/",done:"一个技能正文 ≤ 1500 字，细节通过 read_skill_file 读取。"}
+];
+const OWN=["全部","晨熠","agent 优化","提示词优化","skills 优化"];let who=store.get("dgx-who")||"全部";
+const doneSet=new Set(store.get("dgx-done")||[]);
+function renderOwners(){const o=$("#owners");o.replaceChildren();OWN.forEach(n=>{const cnt=n==="全部"?T.length:T.filter(t=>t.o===n).length;
+  const b=h("button","btn"+(n===who?" on":""),`${n} <span class="mono" style="opacity:.6">${cnt}</span>`);b.onclick=()=>{who=n;store.set("dgx-who",n);renderOwners();renderBoard()};o.append(b)})}
+function renderBoard(){const bd=$("#board");bd.replaceChildren();
+  T.map((t,i)=>({...t,i})).filter(t=>who==="全部"||t.o===who).sort((a,b)=>a.p-b.p||a.d.localeCompare(b.d)).forEach(t=>{
+   const c=h("div",`task p${t.p}${doneSet.has(t.i)?" checked":""}`);
+   c.innerHTML=`<div class="meta"><span class="pill ${["r","a",""][t.p]}">P${t.p}</span><span class="pill">${t.o}</span><span class="pill">${t.d}</span></div>
+    <h4>${t.t}</h4><p class="why">${t.why}</p><div class="kv"><b>改哪里</b>${t.files}</div><div class="kv"><b>做完的样子</b>${t.done}</div>
+    ${t.cmd?`<div class="kv"><b>验证</b><code>${t.cmd}</code></div>`:""}`;
+   const lab=h("label","done");const cb=document.createElement("input");cb.type="checkbox";cb.checked=doneSet.has(t.i);cb.id="task"+t.i;
+   cb.onchange=()=>{cb.checked?doneSet.add(t.i):doneSet.delete(t.i);store.set("dgx-done",[...doneSet]);c.classList.toggle("checked",cb.checked)};
+   lab.append(cb,document.createTextNode("我这边做完了"));c.append(lab);bd.append(c)})}
+renderOwners();renderBoard();
+})();
+</script>
