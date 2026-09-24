@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spark 开发流 · 动画讲解</title>
+  </head>
+  <body>
+    <div class="player">
+      <canvas id="stage" width="1920" height="1080" aria-label="Spark 开发流动画讲解"></canvas>
+      <div class="loading" id="loading">正在铺纸、研墨…</div>
+      <div class="cover" id="cover">
+        <div>
+          <h1>Spark 开发流</h1>
+          <p>一个跑在 DGX Spark 上、每个决定都可度量的开发流 agent · 约 4 分半</p>
+          <button id="start">开始讲解</button>
+          <small>空格 暂停 · ← → 切章 · C 字幕</small>
+        </div>
+      </div>
+      <div class="bar">
+        <button id="play" aria-label="播放">播放</button>
+        <div class="track"><input id="scrub" type="range" min="0" step="0.01" value="0" aria-label="进度" /><div class="ticks" id="ticks"></div></div>
+        <span class="time" id="time">0:00</span>
+        <button id="speed">1×</button>
+        <button id="cc">字幕</button>
+        <button id="full">全屏</button>
+        <div class="chapters" id="chapters"></div>
+        <span class="voice" id="voice"></span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
