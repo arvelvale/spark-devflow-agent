@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from agent.config import Thresholds
 from agent.memory import MemoryManager, MemoryStore, entities, tokens
 
@@ -87,3 +89,16 @@ def test_private_candidates_go_pending(tmp_path):
     items = MemoryManager(s, Thresholds(), dec, extract=lambda p: extracted).write_back("x", [], [], "y", "z")
     assert [i["status"] for i in items if i.get("layer") == "profile"] == ["pending"]
     assert not dec.calls  # 隐私候选不送 JEV
+
+
+@pytest.mark.parametrize("existing,new,dup", [
+    # 2026-09-24 面板里看到的真实重复：同一事实换了说法
+    ('金额统一按"分"存整数，读取老数据时自动换算。优先级高于月度汇总', '金额统一改成按"分"存整数，读取老数据时自动转换', True),
+    ('金额计算不得用 float 累加，统一按"分"存整数，读取老数据时自动换算', '金额计算不得用 float 累加，统一按"分"存整数', True),
+    ("金额按分存整数", "CSV 导出：编码用 UTF-8 带 BOM，不然 Excel 打开中文乱码", False),
+    ("开发日志写在 docs/progress/日期.md", "计划文档写在 docs/plans/日期-短名.md", False),
+])
+def test_near_duplicate_catches_paraphrase(tmp_path, existing, new, dup):
+    s = MemoryStore(tmp_path / "m.sqlite")
+    s.add("semantic", "fact", existing)
+    assert (s.near_duplicate(new) is not None) == dup

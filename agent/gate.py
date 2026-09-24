@@ -29,7 +29,8 @@ class ConfirmRequest:
     permission: str
     arguments: dict
     reason: str
-    appropriate: float | None
+    appropriate: float | None          # = in_scope
+    collateral: float | None = None
 
 
 @dataclass
@@ -87,11 +88,13 @@ class ToolGate:
         except DecisionUnavailable:
             return None
 
-    def _ask_user(self, tool: Tool, args: dict, reason: str, appropriate: float | None) -> bool:
+    def _ask_user(self, tool: Tool, args: dict, reason: str, appropriate: float | None,
+                  collateral: float | None = None) -> bool:
         if self.confirm is None:
             return False
         try:
-            return bool(self.confirm(ConfirmRequest(tool.name, tool.permission.value, args, reason, appropriate)))
+            return bool(self.confirm(ConfirmRequest(tool.name, tool.permission.value, args, reason, appropriate,
+                                                    collateral)))
         except Exception:
             return False
 
@@ -114,12 +117,12 @@ class ToolGate:
                 reason = "JEV 不可用，本地写改为人工确认"
             else:
                 reason = "本地写：JEV 判断不像这个请求需要的步骤，请确认"
-            ok = self._ask_user(tool, args, reason, scope)
+            ok = self._ask_user(tool, args, reason, scope, collateral)
             return GateResult("confirm", reason, scope, th, ok, fallback, collateral)
         # external
         th = self.th.gate_external_deny
         if scope is not None and scope < th:
             return GateResult("deny", "外部写：JEV 判断与用户请求不符，已拦截", scope, th, collateral=collateral)
         reason = "外部可见写操作，一律人工确认"
-        ok = self._ask_user(tool, args, reason, scope)
+        ok = self._ask_user(tool, args, reason, scope, collateral)
         return GateResult("confirm", reason, scope, th, ok, fallback, collateral)

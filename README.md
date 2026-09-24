@@ -69,6 +69,23 @@ python scripts/node.py run "python3 -m agent doctor"
 
 改阈值前先读 `agent/config.py` 里每个阈值的方向注释（值越大意味着什么），改完跑一遍对应的评估。
 
+## Web 面板
+
+```bash
+python scripts/node.py sync      # 先在 web/ 里 npm install && npm run build，sync 会把 web/dist 一起带上
+python scripts/node.py serve     # 节点上起面板 + 本机 127.0.0.1:9000 转发；Ctrl+C 结束，节点进程随之退出
+```
+
+浏览器打开 http://127.0.0.1:9000，口令是 `.env` 里的 `AGENT_WEB_TOKEN`（没设就每次随机生成并打印在终端）。
+
+- 左栏：会话（含命令行跑过的历史会话，只读回放）、长期记忆、服务状态灯（绿 运行 / 蓝 备用 / 琥珀 异常 / 灰 离线）
+- 中间：对话；每轮下面一条决策摘要（技能 · 本地/云端 · 步数 · 耗时），写操作在这里弹确认卡
+- 右栏：所选轮次的决策轨迹（技能两级概率与阈值、路由难度、记忆精选、每步工具与门控、用量）和工作记忆
+- 语音：点麦克风说话 → 转成文字进输入框，可以先改再发。**浏览器只在 localhost 或 https 下开放麦克风**
+
+前端开发：`cd web && npm run dev`（5173 端口，/api 代理到 127.0.0.1:9000）。自测截图：`node web/scripts/shot.mjs <URL> out.png [--dark] [--w 390 --h 844]`。
+`python -m agent serve --dev-no-auth` 可免登录，但只允许配合回环地址；挂公网（`serve --public`，监听 0.0.0.0:9000 → 组委会映射的 9051）一律要口令。
+
 ## 常用参数
 
 - `--no-jev`：关掉 JEV 决策层（A/B 的基线臂）

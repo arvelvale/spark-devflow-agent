@@ -3,6 +3,7 @@
   python scripts/node.py sync                 # 把仓库（含未提交改动，不含 var/ 与被忽略文件）同步到节点 ~/dgx-agent
   python scripts/node.py run "python3 -m agent doctor"
   python scripts/node.py run --no-tunnel "nvidia-smi"
+  python scripts/node.py serve                # 在节点上起 Web 面板，并把本机 127.0.0.1:9000 转发过去
 
 隧道：节点 127.0.0.1:<随机端口> → SSH → 本机代理（从 HTTPS_PROXY 读，默认 127.0.0.1:10090）。
 节点直连不了境外（JEV、Linear），agent 进程靠 https_proxy 走这条隧道；StepFun 与本地模型直连不受影响。
@@ -84,14 +85,57 @@ def open_tunnel(client: paramiko.SSHClient) -> int:
         lambda ch, origin, dest: threading.Thread(target=_pipe, args=(ch, target), daemon=True).start())
 
 
-def run(cmd: str, tunnel: bool = True, cwd: str = REMOTE_DIR, timeout: int = 3600) -> int:
-    client = connect()
+def forward_local(client: paramiko.SSHClient, local_port: int, remote_port: int) -> None:
+    """本机 127.0.0.1:local_port → 节点 127.0.0.1:remote_port（相当于 ssh -L）。"""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", local_port))
+    server.listen(32)
+
+    def accept_loop():
+        while True:
+            try:
+                sock, peer = server.accept()
+                chan = client.get_transport().open_channel("direct-tcpip", ("127.0.0.1", remote_port), peer)
+            except Exception:
+                continue
+            threading.Thread(target=_bridge, args=(sock, chan), daemon=True).start()
+
+    threading.Thread(target=accept_loop, daemon=True).start()
+
+
+def _bridge(sock: socket.socket, chan) -> None:
+    try:
+        while True:
+            r, _, _ = select.select([sock, chan], [], [], 60)
+            if sock in r:
+                data = sock.recv(65536)
+                if not data:
+                    break
+                chan.sendall(data)
+            if chan in r:
+                data = chan.recv(65536)
+                if not data:
+                    break
+                sock.sendall(data)
+    except OSError:
+        pass
+    finally:
+        chan.close()
+        sock.close()
+
+
+def run(cmd: str, tunnel: bool = True, cwd: str = REMOTE_DIR, timeout: int = 3600,
+        pty: bool = False, client: paramiko.SSHClient | None = None) -> int:
+    client = client or connect()
     try:
         prefix = f"cd ~/{cwd} 2>/dev/null || cd ~; export PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8; "
         if tunnel:
             p = f"http://127.0.0.1:{open_tunnel(client)}"
             prefix += f"export https_proxy={p} http_proxy={p} no_proxy=127.0.0.1,localhost; "
         chan = client.get_transport().open_session()
+        if pty:  # 有 pty 时 SSH 断开会给远端进程发 SIGHUP，服务跟着退出，不会遗留在节点上
+            chan.get_pty()
         chan.set_combine_stderr(True)
         chan.settimeout(timeout)
         chan.exec_command(prefix + cmd)
@@ -110,6 +154,9 @@ def run(cmd: str, tunnel: bool = True, cwd: str = REMOTE_DIR, timeout: int = 360
 def sync() -> None:
     files = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd=ROOT, capture_output=True,
                            check=True).stdout.decode("utf-8").split("\0")
+    dist = ROOT / "web" / "dist"  # 前端构建产物不入库，但节点上要用（节点没有 node）
+    if dist.exists():
+        files += [p.relative_to(ROOT).as_posix() for p in dist.rglob("*") if p.is_file()]
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for rel in filter(None, files):
@@ -131,7 +178,7 @@ def sync() -> None:
             sftp.chmod(f"{home}/{REMOTE_DIR}/.env", 0o600)
         # 只覆盖同步的文件，不删节点上的 var/（记忆库、轨迹、工作区）
         _, out, err = client.exec_command(
-            f"cd ~/{REMOTE_DIR} && tar xzf .sync.tar.gz && rm .sync.tar.gz && echo synced $(find . -path ./var -prune -o -type f -print | wc -l) files")
+            f"cd ~/{REMOTE_DIR} && rm -rf web/dist && tar xzf .sync.tar.gz && rm .sync.tar.gz && echo synced $(find . -path ./var -prune -o -type f -print | wc -l) files")
         print(out.read().decode().strip(), err.read().decode().strip())
     finally:
         client.close()
@@ -144,10 +191,23 @@ def main() -> int:
     r = sub.add_parser("run")
     r.add_argument("--no-tunnel", action="store_true")
     r.add_argument("command")
+    sv = sub.add_parser("serve")
+    sv.add_argument("--port", type=int, default=9000, help="节点上的端口")
+    sv.add_argument("--local-port", type=int, default=9000, help="本机转发端口")
+    sv.add_argument("--public", action="store_true", help="监听 0.0.0.0（公网映射端口，必须有口令）")
+    sv.add_argument("--dev-no-auth", action="store_true", help="开发用免登录（不能和 --public 一起用）")
     args = p.parse_args()
     if args.cmd == "sync":
         sync()
         return 0
+    if args.cmd == "serve":
+        client = connect()
+        forward_local(client, args.local_port, args.port)
+        host = "0.0.0.0" if args.public else "127.0.0.1"
+        print(f"本机访问：http://127.0.0.1:{args.local_port}（Ctrl+C 结束，节点上的服务随之退出）", flush=True)
+        extra = " --dev-no-auth" if args.dev_no_auth else ""
+        return run(f"python3 -m agent serve --host {host} --port {args.port}{extra}", tunnel=True, pty=True,
+                   client=client)
     return run(args.command, tunnel=not args.no_tunnel)
 
 

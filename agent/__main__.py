@@ -5,6 +5,7 @@
   python -m agent skills                   列出并校验技能
   python -m agent doctor                   检查模型、JEV、Linear 连通性
   python -m agent memory [list|pending|approve ID|forget ID]
+  python -m agent serve [--host 0.0.0.0] [--port 9000]   Web 面板
 
 常用参数：--workspace 路径  --no-jev（基线臂）  --tier local|cloud  --yes（写操作自动确认）  --quiet
 """
@@ -217,6 +218,12 @@ def cmd_memory(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    from .server import serve
+    serve(Config.load(args.workspace), args.host, args.port, no_auth=args.dev_no_auth)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8()
     p = argparse.ArgumentParser(prog="python -m agent", description="DGX Spark 开发流 agent")
@@ -234,9 +241,13 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("memory")
     m.add_argument("action", nargs="?")
     m.add_argument("id", nargs="?")
+    s = sub.add_parser("serve", help="启动 Web 面板（口令从 AGENT_WEB_TOKEN 读，没有就随机生成并打印）")
+    s.add_argument("--host", default="127.0.0.1", help="默认只听回环地址；公网映射端口用 0.0.0.0")
+    s.add_argument("--port", type=int, default=9000)
+    s.add_argument("--dev-no-auth", action="store_true", help="开发用：免登录，只允许配合回环地址")
     args = p.parse_args(argv)
     handlers = {None: cmd_chat, "chat": cmd_chat, "run": cmd_run, "skills": cmd_skills,
-                "doctor": cmd_doctor, "memory": cmd_memory}
+                "doctor": cmd_doctor, "memory": cmd_memory, "serve": cmd_serve}
     return handlers[args.cmd](args)
 
 

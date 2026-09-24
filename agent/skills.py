@@ -205,6 +205,7 @@ class SkillSelector:
                        "probabilities": {k: round(v, 3) for k, v in sorted(probs.items(), key=lambda x: -x[1])}},
             "gate": {"acts": round(acts, 3), "procedure": round(proc, 3), "prose": round(prose, 3),
                      "value": round(gate, 3), "threshold": self.th.skill_gate},
+            "cached": d1.cached,  # 命中 JEV 结果缓存时耗时接近 0，面板据此标注
         }
         if gate < self.th.skill_gate:
             return Selection([], "jev", reason=f"门控值 {gate:.2f} < {self.th.skill_gate}，不需要技能",
@@ -226,6 +227,7 @@ class SkillSelector:
         for k, v in d2.usage.items():
             usage[k] = usage.get(k, 0) + v
         fits = {k: d2.noul(f"fits_{k}") for k in cands}
+        detail["cached"] = d1.cached and d2.cached
         detail["stage2"] = {k: round(v, 3) for k, v in fits.items()}
         best = max(fits, key=fits.get)
         if fits[best] < self.th.skill_fit:

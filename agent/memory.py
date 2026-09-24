@@ -162,13 +162,22 @@ class MemoryStore:
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:k]
 
-    def near_duplicate(self, content: str, threshold: float = 0.8) -> Memory | None:
+    def near_duplicate(self, content: str, jaccard: float = 0.8, coverage: float = 0.65) -> Memory | None:
+        """同义改写的同一事实也算重复。2026-09-24 实测：同一事实换个说法 Jaccard 只有 0.45–0.59，
+        但较短一条被覆盖的比例 0.72–1.00；不同事实的覆盖率 ≤ 0.38。"""
         toks = tokens(content)
         if not toks:
             return None
         for m in self.list("active") + self.list("pending"):
+            if m.layer == "episodic":
+                continue
             other = tokens(m.content)
-            if other and len(toks & other) / len(toks | other) >= threshold:
+            if not other:
+                continue
+            common = len(toks & other)
+            if common / len(toks | other) >= jaccard:
+                return m
+            if min(len(toks), len(other)) >= 4 and common / min(len(toks), len(other)) >= coverage:
                 return m
         return None
 
