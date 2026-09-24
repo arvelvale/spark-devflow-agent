@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英伟达技术栈分层图解 · 从 CUDA 到 Agent</title>
+<!--
+  2026-09-22 v2 改版：用户反馈「过于偏文字化」。
+  本版原则：图为主，文字只做标注。
+  - 七层栈 = 可点击的横带（视觉化），详情限 2-3 行
+  - 五个概念（CUDA / NeMo / NIM / vLLM / OpenShell）各配一张剖面图
+  - 新增 OpenShell、vLLM 两张图（对应节点预装新发现）
+  事实来源：节点运维实测文档、NVIDIA 官网 NIM 页、ai-dynamo/dynamo README、
+  dgx-spark-playbooks（含 openshell/vllm）、NeMo Agent Toolkit 官方文档。
+-->
+<style>
+  :root {
+    --paper: #FAFAF7; --ink: #1C1C1A; --ink-soft: #5A5A55; --ink-faint: #8E8E86;
+    --line: #E3E3DC; --line-strong: #C9C9C0; --nv: #76B900; --nv-deep: #5C8F00; --nv-wash: #F0F7E3;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+    --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+    --sans: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 40px; }
+
+  header.hero { padding: 80px 0 56px; border-bottom: 1px solid var(--line); }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; color: var(--nv-deep); text-transform: uppercase; margin-bottom: 16px; }
+  h1 { font-family: var(--serif); font-weight: 700; font-size: clamp(32px, 4.4vw, 46px); line-height: 1.28; }
+  .lede { margin-top: 18px; max-width: 620px; font-size: 16px; color: var(--ink-soft); }
+  .env { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .env span { font-family: var(--mono); font-size: 12px; color: #3A3A35; background: #EFEFE9; border-radius: 3px; padding: 4px 10px; }
+  .env span b { color: var(--nv-deep); }
+
+  section { padding: 64px 0; border-bottom: 1px solid var(--line); }
+  .sec-no { font-family: var(--mono); font-size: 13px; color: var(--nv-deep); letter-spacing: .1em; margin-bottom: 10px; }
+  h2 { font-family: var(--serif); font-size: 26px; font-weight: 700; }
+  .sec-lede { margin-top: 10px; max-width: 680px; color: var(--ink-soft); font-size: 15.5px; }
+  .quiet { color: var(--ink-faint); font-size: 14px; }
+  code { font-family: var(--mono); font-size: .86em; background: #EFEFE9; border-radius: 3px; padding: 1px 6px; color: #3A3A35; }
+
+  /* ============ 01 分层横带 ============ */
+  .bands { margin-top: 26px; border: 1px solid var(--line-strong); background: #FFFFFF; }
+  .band + .band { border-top: 1px solid var(--line); }
+  .band-btn {
+    display: grid; grid-template-columns: 52px 130px 1fr auto; gap: 14px; align-items: center;
+    width: 100%; cursor: pointer; border: none; background: none; text-align: left;
+    padding: 14px 18px; font-family: var(--sans);
+  }
+  .band-btn:hover { background: #F4F4EE; }
+  .band.active .band-btn { background: var(--nv-wash); }
+  .band-btn .lv { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--ink-faint); }
+  .band.active .band-btn .lv { color: var(--nv-deep); }
+  .band-btn .nm { font-family: var(--serif); font-size: 17px; font-weight: 700; }
+  .band-btn .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .band-btn .chips span { font-family: var(--mono); font-size: 11px; color: #3A3A35; border: 1px solid var(--line-strong); background: #FFFFFF; padding: 2px 8px; border-radius: 2px; white-space: nowrap; }
+  .band-btn .chips span.hot { border-color: var(--nv); color: #2E4A00; background: var(--nv-wash); font-weight: 700; }
+  .badge { font-family: var(--mono); font-size: 10.5px; padding: 2px 9px; border-radius: 2px; white-space: nowrap; }
+  .badge.run { background: var(--nv); color: #fff; }
+  .badge.ready { background: var(--ink); color: #fff; }
+  .badge.cand { background: #FFF3D6; color: #7A5B00; border: 1px solid #E8D9AE; }
+  .badge.no { background: #EFEFE9; color: var(--ink-faint); }
+  .band-body { display: none; padding: 4px 18px 18px 84px; }
+  .band.active .band-body { display: block; }
+  .band-body .row { display: flex; gap: 10px; margin-top: 8px; font-size: 14.5px; }
+  .band-body .row .k { flex: 0 0 44px; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); padding-top: 3px; }
+  .band-body .row .v { color: var(--ink-soft); }
+  .band-body .row .v b { color: var(--ink); }
+  @media (max-width: 760px) {
+    .band-btn { grid-template-columns: 40px 1fr; grid-template-rows: auto auto; }
+    .band-btn .chips { grid-column: 2; }
+    .badge { grid-column: 2; justify-self: start; }
+    .band-body { padding-left: 18px; }
+  }
+
+  /* ============ 02 概念卡（图为主） ============ */
+  .cards { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cards .card:last-child { grid-column: 1 / -1; }
+  @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } .cards .card:last-child { grid-column: auto; } }
+  .card { border: 1px solid var(--line-strong); background: #FFFFFF; }
+  .card .head { padding: 16px 22px 12px; }
+  .card .head .t { font-family: var(--serif); font-size: 20px; font-weight: 700; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .card .head .t .pos { font-family: var(--mono); font-size: 10.5px; color: var(--nv-deep); letter-spacing: .06em; }
+  .card .head .t .stamp { font-family: var(--mono); font-size: 10.5px; background: var(--nv); color: #fff; padding: 2px 8px; border-radius: 2px; }
+  .card .head .analogy { margin-top: 4px; font-size: 13.5px; color: var(--nv-deep); }
+  .stage { border-top: 1px solid var(--line); padding: 22px; min-height: 168px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; background: #FCFCFA; }
+  .card .foot { border-top: 1px solid var(--line); padding: 12px 22px 16px; font-size: 13.5px; color: var(--ink-soft); }
+  .card .foot b { color: var(--ink); }
+  .card .foot p + p { margin-top: 4px; }
+
+  /* 图元语汇 */
+  .bx { border: 1px solid var(--line-strong); background: #FFFFFF; padding: 8px 13px; font-family: var(--mono); font-size: 12px; text-align: center; }
+  .bx small { display: block; font-size: 10px; color: var(--ink-faint); margin-top: 2px; }
+  .bx.hl { border-color: var(--nv); background: var(--nv-wash); color: #2E4A00; font-weight: 700; }
+  .bx.dim { border-style: dashed; color: var(--ink-faint); background: #F7F7F2; }
+  .ar { color: var(--ink-faint); font-family: var(--mono); font-size: 14px; }
+  .mini-stack { display: flex; flex-direction: column; gap: 5px; width: 230px; }
+  .mini-stack div { border: 1px solid var(--line-strong); background: #FFFFFF; padding: 7px 10px; font-family: var(--mono); font-size: 12px; text-align: center; }
+  .mini-stack div small { display: block; font-size: 10px; color: var(--ink-faint); }
+  .mini-stack div.hl { border-color: var(--nv); background: var(--nv-wash); color: #2E4A00; font-weight: 700; }
+  .tri-row { display: flex; gap: 10px; align-items: stretch; }
+  .tri-row .col { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+  .tri-row .col .cap { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
+  .qbox { border: 1.5px solid var(--nv-deep); padding: 26px 16px 16px; position: relative; background: #FFFFFF; }
+  .qbox .wall { position: absolute; font-family: var(--mono); font-size: 10px; color: var(--nv-deep); background: #FCFCFA; padding: 0 6px; white-space: nowrap; }
+  .qbox .inside { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; border: 1px dashed var(--line-strong); padding: 14px; }
+  .gate { border: 1px solid var(--nv); background: var(--nv-wash); color: #2E4A00; padding: 6px 12px; font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+  .cmd { margin-top: 12px; width: 100%; text-align: center; font-family: var(--mono); font-size: 11.5px; color: #3A3A35; background: #EFEFE9; padding: 6px 10px; border-radius: 2px; }
+
+  /* ============ 03 路径 ============ */
+  .paths { margin-top: 26px; display: grid; gap: 14px; }
+  .path { border: 1px solid var(--line-strong); background: #FFFFFF; padding: 18px 22px; }
+  .path.now { border-color: var(--nv); }
+  .path .ph { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); letter-spacing: .06em; margin-bottom: 12px; }
+  .path.now .ph { color: var(--nv-deep); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+  .node { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line-strong); background: #FFFFFF; padding: 6px 11px; border-radius: 2px; white-space: nowrap; }
+  .node.ours { border-color: var(--nv); background: var(--nv-wash); color: #2E4A00; font-weight: 700; }
+  .node.skipped { border-style: dashed; color: var(--ink-faint); background: #F7F7F2; }
+  .path .note { margin-top: 10px; font-size: 13px; color: var(--ink-soft); }
+
+  /* ============ 04 现成资产 ============ */
+  .tray { margin-top: 26px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 760px) { .tray { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .tray { grid-template-columns: 1fr; } }
+  .asset { border: 1px solid var(--line-strong); background: #FFFFFF; padding: 16px 18px; }
+  .asset .sz { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--nv-deep); }
+  .asset .nm { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .asset .sub { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 3px; line-height: 1.5; }
+  .tray-note { margin-top: 16px; font-size: 13.5px; color: var(--ink-soft); }
+
+  footer { padding: 48px 0 72px; }
+  footer .quiet { max-width: 720px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">NVIDIA AI 技术栈 · 内部讲解 v2</div>
+    <h1>一层层往上盖：<br>从 CUDA 到 Agent</h1>
+    <p class="lede">七层栈，点横带看每层职责；五个关键概念，各配一张剖面图。本版以图为主，文字只做标注。</p>
+    <div class="env">
+      <span>节点 <b>DGX Spark · GB10</b></span>
+      <span>驱动 <b>580.142</b></span>
+      <span>报告 CUDA <b>13.0</b></span>
+      <span>内存 <b>121 GiB</b></span>
+      <span>现成模型 <b>×2</b></span>
+      <span>现成引擎 <b>Ollama + vLLM</b></span>
+    </div>
+  </div>
+</header>
+
+<!-- ================= 01 分层 ================= -->
+<section id="s1">
+  <div class="wrap">
+    <div class="sec-no">01 / 七层栈</div>
+    <h2>七层栈：点横带，看每层在做什么</h2>
+    <p class="sec-lede">从硬件（L1）到应用（L7）。绿色高亮 = 本节点上现成或已验证的环节。</p>
+    <div class="bands" id="bandBox"></div>
+  </div>
+</section>
+
+<!-- ================= 02 五概念 ================= -->
+<section id="s2">
+  <div class="wrap">
+    <div class="sec-no">02 / 五个概念</div>
+    <h2>五个关键概念，各配一张剖面图</h2>
+    <p class="sec-lede">CUDA 是地基，NeMo 是车间，NIM 是集装箱，vLLM 和 OpenShell 是本次节点检查后新晋重要的两位。</p>
+
+    <div class="cards">
+
+      <!-- CUDA -->
+      <div class="card">
+        <div class="head">
+          <div class="t">CUDA <span class="pos">L1 · 地基</span></div>
+          <div class="analogy">类比：GPU 世界的 C 语言 + 运行时——上面所有层都站在它上面</div>
+        </div>
+        <div class="stage">
+          <div class="mini-stack">
+            <div>应用 / 模型<small>Ollama、vLLM、你的代码</small></div>
+            <div class="ar">▼ 调用</div>
+            <div class="hl">CUDA<small>驱动自带运行时（报告 13.0）</small></div>
+            <div class="ar">▼</div>
+            <div>GPU 硬件<small>GB10 · 统一内存 121 GiB</small></div>
+          </div>
+        </div>
+        <div class="foot">
+          <p><b>关键提醒：</b>「驱动报告 CUDA 13.0」≠ 装了同版本开发工具链（节点文档原话）。</p>
+          <p><b>我们的用法：</b>不写内核，只看懂依赖关系。Ollama 已在通过 CUDA 调 GPU。</p>
+        </div>
+      </div>
+
+      <!-- NeMo -->
+      <div class="card">
+        <div class="head">
+          <div class="t">NeMo <span class="pos">L5+L6 · 车间与质检</span></div>
+          <div class="analogy">类比：造模型的车间 + 出货前的质检线（官网：build, monitor, optimize agents 全家桶）</div>
+        </div>
+        <div class="stage">
+          <div class="tri-row">
+            <div class="col">
+              <div class="bx dim">微调 / 训练<small>NeMo · Unsloth</small></div>
+              <div class="cap">本期不做</div>
+            </div>
+            <div class="col">
+              <div class="bx dim">Guardrails<small>对话安全护栏</small></div>
+              <div class="cap">用不到</div>
+            </div>
+            <div class="col">
+              <div class="bx hl">Agent Toolkit<small>评估 · 剖析 · 编排</small></div>
+              <div class="cap">只取这个</div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <p><b>为什么只取一块：</b>A/B 评估 harness（有/无 JEV 两臂对照）是技术深度 25% 的直接证据；微调没有具体问题需要它解决。</p>
+          <p><b>形态：</b>纯 Python，可指向本地 Ollama。</p>
+        </div>
+      </div>
+
+      <!-- NIM -->
+      <div class="card">
+        <div class="head">
+          <div class="t">NIM <span class="pos">L4 · 集装箱</span></div>
+          <div class="analogy">类比：把模型装进标准集装箱——模型 + 引擎 + API + 依赖打成一个容器</div>
+        </div>
+        <div class="stage">
+          <div class="qbox" style="border-style:solid;border-color:var(--line-strong);padding:16px;">
+            <span class="wall" style="top:-8px;left:14px;">docker 容器</span>
+            <div class="inside" style="border:none;padding:0;gap:8px;">
+              <div class="bx">模型权重</div>
+              <div class="ar">+</div>
+              <div class="bx">优化引擎<small>TRT-LLM / vLLM / SGLang</small></div>
+              <div class="ar">+</div>
+              <div class="bx hl">OpenAI 兼容 API</div>
+            </div>
+            <div class="cmd">docker run nvcr.io/nim/publisher/model &nbsp;→&nbsp; 官方说法：5 分钟部署</div>
+          </div>
+        </div>
+        <div class="foot">
+          <p><b>好处：</b>标准化、可移植、企业级验证。官方基准：Llama 3.1 8B 单卡 H100，开启比不开启吞吐约 2 倍（1201 vs 613 tok/s）。</p>
+          <p><b>注意：</b>研发/演示免费，<b>生产需 NVIDIA AI Enterprise 许可</b>；需 NGC 拉镜像，GB10 aarch64 兼容性未验证。</p>
+        </div>
+      </div>
+
+      <!-- vLLM -->
+      <div class="card">
+        <div class="head">
+          <div class="t">vLLM <span class="pos">L3 · 引擎（现成）</span> <span class="stamp">节点已装 0.28.0</span></div>
+          <div class="analogy">类比：发动机里的涡轮增压——同样烧油，出更大马力</div>
+        </div>
+        <div class="stage">
+          <div class="tri-row">
+            <div class="col">
+              <div class="bx dim">朴素服务<small>请求排队 · 逐个执行</small></div>
+              <div class="bx dim">显存浪费<small>KV cache 预留最大长度</small></div>
+              <div class="cap">吞吐上限低</div>
+            </div>
+            <div class="ar">→</div>
+            <div class="col">
+              <div class="bx hl">连续批处理<small>continuous batching</small></div>
+              <div class="bx hl">PagedAttention<small>显存分页管理</small></div>
+              <div class="cap">吞吐大幅提升</div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <p><b>节点现状：</b><code>~/envs/vllm</code> 已装 vllm 0.28.0 + torch 2.13.0 + triton 3.7.1 + flashinfer，暴露 OpenAI 兼容 API（:8000）；配套权重 <code>~/models/Nemotron-3.5-Lightning-30B-A3B-NVFP4</code>（21G）就位；<code>~/tw</code> 还有 197 个离线 wheel 可重建环境。</p>
+          <p><b>我们的决策：</b>「平台推理优化」演示的第一候选——激活即用，零安装。</p>
+        </div>
+      </div>
+
+      <!-- OpenShell -->
+      <div class="card">
+        <div class="head">
+          <div class="t">OpenShell <span class="pos">L6 · 沙箱（新晋）</span></div>
+          <div class="analogy">类比：给 agent 建的安检隔离区——能力不关禁闭，但每一道门都有人查</div>
+        </div>
+        <div class="stage">
+          <div class="qbox">
+            <span class="wall" style="top:-8px;left:16px;">文件 · Landlock 只放行白名单</span>
+            <span class="wall" style="top:-8px;right:16px;">网络 · 默认全部拒绝</span>
+            <span class="wall" style="bottom:-8px;left:16px;">凭据 · provider 统一注入</span>
+            <span class="wall" style="bottom:-8px;right:16px;">推理 · 拦截并路由本地</span>
+            <div class="inside">
+              <div class="bx hl">Agent<small>跑在沙箱里</small></div>
+              <div class="ar">⇄</div>
+              <div class="bx">Tools<small>CLI / MCP</small></div>
+              <div class="ar">→ 只有这一条</div>
+              <div class="gate">inference.local → 本地 vLLM</div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <p><b>它防四类风险：</b>数据泄露、恶意代码执行、误操作、提示注入。策略写在 YAML 里可版本控制、可审计。</p>
+          <p><b>形态与出处：</b>开源，Docker 内跑 k3s，官方 playbook <b>明确支持 DGX Spark</b>。对应我们架构文档第 9 节——工具权限分级的可选加固路径。</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 路径 ================= -->
+<section id="s3">
+  <div class="wrap">
+    <div class="sec-no">03 / 定位</div>
+    <h2>我们的请求走哪条路</h2>
+    <p class="sec-lede">虚线 = 我们跳过的层。单节点单模型规模下，跳过是合理选择，不是将就。</p>
+    <div class="paths">
+      <div class="path now">
+        <div class="ph">基线（已验证在跑）</div>
+        <div class="flow">
+          <span class="node">请求</span><span class="ar">→</span>
+          <span class="node">Agent 内核</span><span class="ar">→</span>
+          <span class="node ours">Ollama :11434</span><span class="ar">→</span>
+          <span class="node ours">Qwen3.8 27B</span><span class="ar">→</span>
+          <span class="node ours">CUDA</span><span class="ar">→</span>
+          <span class="node">GB10</span>
+        </div>
+        <div class="note">实测：4096 上下文，「17×19」答 323，首请求 8.69s（加载 8.07s）。JEV / StepFun 走外部分支，不占本地路径。</div>
+      </div>
+      <div class="path">
+        <div class="ph">二档候选（现成资产，待验证）</div>
+        <div class="flow">
+          <span class="node">请求</span><span class="ar">→</span>
+          <span class="node">Agent 内核</span><span class="ar">→</span>
+          <span class="node ours">vLLM :8000</span><span class="ar">→</span>
+          <span class="node ours">Nemotron 30B-A3B NVFP4</span><span class="ar">→</span>
+          <span class="node ours">CUDA</span><span class="ar">→</span>
+          <span class="node">GB10</span>
+        </div>
+        <div class="note">同一份 Qwen GGUF 也可喂给 vLLM（需先转 HF 格式）。NIM / TensorRT-LLM 排在其后：要拉镜像、要转权重，成本高。</div>
+      </div>
+      <div class="path">
+        <div class="ph">英伟达全栈参考形态（仅作对照）</div>
+        <div class="flow">
+          <span class="node">请求</span><span class="ar">→</span>
+          <span class="node skipped">NIM 微服务</span><span class="ar">→</span>
+          <span class="node skipped">Dynamo 编排</span><span class="ar">→</span>
+          <span class="node skipped">TensorRT-LLM</span><span class="ar">→</span>
+          <span class="node">CUDA</span><span class="ar">→</span>
+          <span class="node">GB10</span>
+        </div>
+        <div class="note">Dynamo 官方原话：「单模型单 GPU，推理引擎本身就够了」——这张图是数据中心叙事，不是我们的作业。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 现成资产 ================= -->
+<section id="s4">
+  <div class="wrap">
+    <div class="sec-no">04 / 家底</div>
+    <h2>节点上的现成资产（都不是我们装的）</h2>
+    <p class="sec-lede">2026-09-22 全量检查结果。知道有什么，才知道哪些论证不需要自己造。</p>
+    <div class="tray">
+      <div class="asset"><div class="sz">17 GB</div><div class="nm">Qwen3.8 27B GGUF</div><div class="sub">Ollama · modelscope Unsloth Q4_K_M<br>别名 qwen3.8:27b · 已验证</div></div>
+      <div class="asset"><div class="sz">21 GB</div><div class="nm">Nemotron 3.5 Lightning 30B-A3B</div><div class="sub">NVFP4 · ~/models<br>配 vLLM · 带评测素材</div></div>
+      <div class="asset"><div class="sz">198 包</div><div class="nm">vLLM 虚拟环境</div><div class="sub">~/envs/vllm · Python 3.12<br>vllm 0.28.0 + torch 2.13 + flashinfer</div></div>
+      <div class="asset"><div class="sz">197 个</div><div class="nm">离线 wheelhouse</div><div class="sub">~/tw · aarch64 cp312<br>断网可重建环境</div></div>
+      <div class="asset"><div class="sz">4 类</div><div class="nm">Agent SDK 预置</div><div class="sub">anthropic 1.3.0 · openai 3.6.0<br>mcp 2.1.1 · agent-detector 1.1.0</div></div>
+      <div class="asset"><div class="sz">2 件</div><div class="nm">性能剖析工具</div><div class="sub">Nsight Systems（nsys 在 PATH）<br>Nsight Compute · /opt/nvidia</div></div>
+    </div>
+    <p class="tray-note">另有：DGX Dashboard（本机 11000 面板）、NVIDIA AI Workbench（/opt）、ollama 离线安装包两个（约 19G）。磁盘 916G 已用 101G，余 769G；GPU 空闲。<b>没装的：</b>OpenClaw、OpenShell、NIM 镜像、vllm/sglang 命令、uv/conda。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="quiet">
+      事实来源：节点参数与预装清单来自 <code>docs/节点连接与模型运维.md</code>（2026-09-22 SSH 实测）；NIM 描述与基准来自英伟达官网 NIM 页；Dynamo 描述来自 GitHub <code>ai-dynamo/dynamo</code>（Apache-2.0）；OpenShell 来自 playbook-openshell 全文；vLLM 版本与配套来自节点 venv 实测。分层决策详见 <code>docs/讨论重点与NVIDIA技术栈.md</code>。内部讲解材料，2026-09-22 v2；vLLM 服务与 Nemotron 模型尚未启动验证。
+    </p>
+  </div>
+</footer>
+
+<script>
+/* ---------- 七层数据（详情限 2-3 行） ---------- */
+var LAYERS = [
+  { lv: "L1", nm: "平台层", chips: [["CUDA", 0], ["驱动 580.142", 0], ["GB10", 0]], st: ["run", "在跑"], analogy: "土地与水电煤：准入条件，本身不产出。", node: "驱动就绪，Ollama 已通过 CUDA 实测推理。CUDA 13.0 是报告值，≠ 工具链。", verdict: "不动系统、不写内核。" },
+  { lv: "L2", nm: "加速库层", chips: [["CUDA-X", 0], ["cuDF / cuVS", 0], ["cuOpt", 0]], st: ["no", "不采用"], analogy: "标准件与专用机床：引擎工厂采购，用户不直接打交道。", node: "未安装。数据规模用不到 GPU 数据处理。", verdict: "不采用；cuOpt 仅在演示场景变优化类时重评。" },
+  { lv: "L3", nm: "推理引擎层", chips: [["Ollama 0.33.2", 1], ["vLLM 0.28.0", 1], ["TensorRT-LLM", 0], ["SGLang / llama.cpp", 0]], st: ["run", "两套都在"], analogy: "发动机：决定性能上限；封装工具决定上手速度。", node: "Ollama 在跑 Qwen；vLLM venv + Nemotron 权重现成待启。", verdict: "Ollama 为基线，vLLM+Nemotron 是二档演示首选。" },
+  { lv: "L4", nm: "服务编排层", chips: [["NIM", 0], ["Dynamo", 0]], st: ["cand", "候选"], analogy: "NIM 是标准集装箱，Dynamo 是港口调度。", node: "Docker 已装但无镜像；NGC 可用性未验证。", verdict: "排在 vLLM 之后；Dynamo 单机用不到（官方原话）。" },
+  { lv: "L5", nm: "训练 / 微调层", chips: [["NeMo", 0], ["Unsloth", 0], ["LLaMA Factory", 0]], st: ["no", "不采用"], analogy: "发动机再制造：周期长，除非现成的真不够用。", node: "未安装，也没有需要微调的具体问题。", verdict: "本期不做；要做先回答损失哪个指标。" },
+  { lv: "L6", nm: "Agent 工具层", chips: [["NeMo Agent Toolkit", 0], ["OpenShell", 1], ["Skills", 0]], st: ["cand", "候选"], analogy: "仪表盘、安全带、工具箱：不加马力，加可信与可检验。", node: "OpenShell 未装（playbook 支持 Spark）；NAT 未装；Skills 有官方范本。", verdict: "NAT 做评估 harness（一档）；OpenShell 可选安全加固。" },
+  { lv: "L7", nm: "模型层", chips: [["Qwen3.8 27B", 1], ["Nemotron 3.5 30B-A3B", 1], ["StepFun step-3.7-flash", 0]], st: ["run", "两个现成"], analogy: "发动机选项：换模型不换车身。", node: "Qwen GGUF（Ollama）+ Nemotron NVFP4（配 vLLM）+ StepFun 外部。", verdict: "模型与架构解耦，决策层/记忆层/skills 不随模型改。" }
+];
+
+var bandBox = document.getElementById("bandBox");
+function render(i) {
+  var L = LAYERS[i];
+  var bands = bandBox.querySelectorAll(".band");
+  for (var k = 0; k < bands.length; k++) bands[k].classList.toggle("active", k === i);
+  var chips = L.chips.map(function (c) {
+    return "<span" + (c[1] ? ' class="hot"' : "") + ">" + c[0] + "</span>";
+  }).join("");
+  return (
+    "<h3>" + L.nm + "</h3>" +
+    '<div class="row"><span class="k">类比</span><span class="v">' + L.analogy + "</span></div>" +
+    '<div class="row"><span class="k">节点</span><span class="v">' + L.node + "</span></div>" +
+    '<div class="row"><span class="k">决策</span><span class="v"><b>' + L.verdict + "</b></span></div>"
+  );
+}
+LAYERS.forEach(function (L, i) {
+  var d = document.createElement("div");
+  d.className = "band";
+  var chips = L.chips.map(function (c) {
+    return "<span" + (c[1] ? ' class="hot"' : "") + ">" + c[0] + "</span>";
+  }).join("");
+  d.innerHTML =
+    '<button class="band-btn">' +
+      '<span class="lv">' + L.lv + "</span>" +
+      '<span class="nm">' + L.nm + "</span>" +
+      '<span class="chips">' + chips + "</span>" +
+      '<span class="badge ' + L.st[0] + '">' + L.st[1] + "</span>" +
+    "</button>" +
+    '<div class="band-body"></div>';
+  d.querySelector(".band-btn").onclick = function () {
+    var wasActive = d.classList.contains("active");
+    var bands = bandBox.querySelectorAll(".band");
+    for (var k = 0; k < bands.length; k++) {
+      bands[k].classList.remove("active");
+      bands[k].querySelector(".band-body").innerHTML = "";
+    }
+    if (!wasActive) {
+      d.classList.add("active");
+      d.querySelector(".band-body").innerHTML = render(i);
+    }
+  };
+  bandBox.appendChild(d);
+});
+/* 默认展开 L3（本次讲解核心：两套引擎都在） */
+bandBox.querySelectorAll(".band")[2].classList.add("active");
+bandBox.querySelectorAll(".band")[2].querySelector(".band-body").innerHTML = render(2);
+</script>
+
+</body>
+</html>

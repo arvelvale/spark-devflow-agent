@@ -1,0 +1,15 @@
+# 凭据与本地资料
+.env
+*.xlsx
+*.docx
+.mcp-ssh.lock
+.ssh_known_hosts
+
+# 运行时数据（记忆库、决策轨迹、会话归档、演示工作区、缓存）
+var/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

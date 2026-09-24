@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>一个 Skill 是怎么工作的 · 以 NVIDIA rag-blueprint 为例</title>
+<!--
+  设计假设（Junior pass，2026-09-22）：
+  - 受众：项目团队内部讲解用，观众距离 = 笔记本 1m，信息密度中等。
+  - 气质：技术文档解说。纸白底 #FAFAF7、墨色 #1C1C1A、单一 accent 取 NVIDIA 绿 #76B900
+    （讲解对象就是 NVIDIA 官方 skill，品牌色携带真实信息，不是装饰）。
+  - 字体：中文标题用衬线（Songti/Noto Serif 栈）拉开与 AI 默认 sans 的差异；
+    技术 token（命令、文件名、字段名）用等宽；正文系统 sans。
+  - 交互只做两个「能教机制」的：意图路由演示（点 utterance 看路由到哪篇 reference）、
+    Configure 8 步步进（看探测→定位→核对→应用→验证的闭环）。
+  - 内容全部来自 reference/nvidia-skills/rag-blueprint 原始文件（v2.6.0），无编造。
+-->
+<style>
+  :root {
+    --paper: #FAFAF7;
+    --ink: #1C1C1A;
+    --ink-soft: #5A5A55;
+    --ink-faint: #8E8E86;
+    --line: #E3E3DC;
+    --line-strong: #C9C9C0;
+    --nv: #76B900;
+    --nv-deep: #5C8F00;
+    --nv-wash: #F0F7E3;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+    --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+    --sans: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 40px; }
+
+  /* ---------- hero ---------- */
+  header.hero { padding: 96px 0 64px; border-bottom: 1px solid var(--line); }
+  .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .12em;
+    color: var(--nv-deep); text-transform: uppercase; margin-bottom: 20px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 700;
+    font-size: clamp(34px, 5vw, 52px); line-height: 1.25;
+    letter-spacing: .01em; text-wrap: pretty;
+  }
+  .lede {
+    margin-top: 24px; max-width: 640px;
+    font-size: 17px; color: var(--ink-soft); text-wrap: pretty;
+  }
+  .facts { display: flex; gap: 48px; margin-top: 40px; flex-wrap: wrap; }
+  .fact .n { font-family: var(--serif); font-size: 34px; font-weight: 700; color: var(--ink); }
+  .fact .n em { font-style: normal; color: var(--nv-deep); }
+  .fact .l { font-size: 13px; color: var(--ink-faint); margin-top: 2px; }
+
+  /* ---------- sections ---------- */
+  section { padding: 72px 0; border-bottom: 1px solid var(--line); }
+  .sec-no {
+    font-family: var(--mono); font-size: 13px; color: var(--nv-deep);
+    letter-spacing: .1em; margin-bottom: 14px;
+  }
+  h2 {
+    font-family: var(--serif); font-size: 28px; font-weight: 700;
+    line-height: 1.35; text-wrap: pretty;
+  }
+  .sec-lede { margin-top: 14px; max-width: 680px; color: var(--ink-soft); text-wrap: pretty; }
+  p + p { margin-top: 14px; }
+  code, .mono {
+    font-family: var(--mono); font-size: .88em;
+    background: #EFEFE9; border-radius: 3px; padding: 1px 6px; color: #3A3A35;
+  }
+  .quiet { color: var(--ink-faint); font-size: 14px; }
+
+  /* ---------- 结构图 ---------- */
+  .layer { border: 1px solid var(--line-strong); background: #FFFFFF; margin-top: 18px; }
+  .layer-head {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 14px 22px; border-bottom: 1px solid var(--line);
+  }
+  .layer-head .tag {
+    font-family: var(--mono); font-size: 12px; color: #FFFFFF; background: var(--ink);
+    padding: 2px 10px; border-radius: 2px; white-space: nowrap;
+  }
+  .layer-head .tag.green { background: var(--nv-deep); }
+  .layer-head h3 { font-family: var(--serif); font-size: 18px; font-weight: 700; }
+  .layer-head .size { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+  .layer-body { padding: 16px 22px 20px; font-size: 15px; }
+  .layer-body ul { list-style: none; }
+  .layer-body li { padding-left: 18px; position: relative; margin-top: 6px; color: var(--ink-soft); }
+  .layer-body li::before {
+    content: ""; position: absolute; left: 0; top: .68em;
+    width: 7px; height: 1px; background: var(--nv-deep);
+  }
+  .flow-arrow {
+    text-align: center; color: var(--nv-deep); font-family: var(--mono);
+    font-size: 12px; padding: 6px 0; letter-spacing: .2em;
+  }
+
+  /* ---------- 意图路由演示 ---------- */
+  .demo { display: grid; grid-template-columns: 300px 1fr; gap: 0; margin-top: 28px; border: 1px solid var(--line-strong); background: #FFFFFF; }
+  @media (max-width: 760px) { .demo { grid-template-columns: 1fr; } }
+  .utterances { border-right: 1px solid var(--line); padding: 18px 0; }
+  @media (max-width: 760px) { .utterances { border-right: none; border-bottom: 1px solid var(--line); } }
+  .utterances .cap { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .1em; padding: 0 20px 10px; }
+  .utt {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    border: none; background: none; padding: 12px 20px;
+    font-family: var(--sans); font-size: 15px; color: var(--ink);
+    border-left: 3px solid transparent; transition: background .15s;
+  }
+  .utt:hover { background: #F4F4EE; }
+  .utt.active { border-left-color: var(--nv); background: var(--nv-wash); font-weight: 600; }
+  .utt .en { display: block; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .route { padding: 22px 26px; }
+  .route .match { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); letter-spacing: .08em; }
+  .route .table-row { margin-top: 10px; border: 1px dashed var(--line-strong); padding: 12px 16px; font-size: 15px; }
+  .route .table-row b { font-family: var(--serif); }
+  .route .arrow-line { margin: 14px 0; color: var(--nv-deep); font-family: var(--mono); font-size: 13px; }
+  .route .target {
+    border: 1px solid var(--nv); background: var(--nv-wash);
+    padding: 14px 18px; font-family: var(--mono); font-size: 14px; color: #2E4A00;
+  }
+  .route .target .path { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .route .why { margin-top: 14px; font-size: 14px; color: var(--ink-soft); }
+
+  /* ---------- 步进器 ---------- */
+  .stepper { margin-top: 28px; display: grid; grid-template-columns: 220px 1fr; border: 1px solid var(--line-strong); background: #FFFFFF; }
+  @media (max-width: 760px) { .stepper { grid-template-columns: 1fr; } }
+  .steps { border-right: 1px solid var(--line); padding: 14px 0; }
+  @media (max-width: 760px) { .steps { border-right: none; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; } }
+  .step-btn {
+    display: flex; gap: 10px; align-items: baseline; width: 100%; cursor: pointer;
+    border: none; background: none; text-align: left; padding: 9px 18px;
+    font-family: var(--sans); font-size: 14px; color: var(--ink-soft); white-space: nowrap;
+  }
+  .step-btn .i { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+  .step-btn:hover { background: #F4F4EE; }
+  .step-btn.active { background: var(--nv-wash); color: var(--ink); font-weight: 600; }
+  .step-btn.active .i { color: var(--nv-deep); }
+  .step-detail { padding: 24px 28px; min-height: 300px; }
+  .step-detail h4 { font-family: var(--serif); font-size: 19px; margin-bottom: 10px; }
+  .step-detail .d { font-size: 15px; color: var(--ink-soft); }
+  .step-detail pre {
+    margin-top: 14px; background: #1C1C1A; color: #E8E8E0;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    padding: 16px 18px; overflow-x: auto; border-radius: 3px;
+  }
+  .step-detail pre .c { color: #7FA83E; }
+  .step-detail table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }
+  .step-detail th, .step-detail td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; }
+  .step-detail th { background: #F4F4EE; font-weight: 600; }
+  .step-nav { margin-top: 18px; display: flex; gap: 12px; }
+  .step-nav button {
+    cursor: pointer; border: 1px solid var(--line-strong); background: #FFFFFF;
+    font-family: var(--sans); font-size: 14px; padding: 8px 18px; border-radius: 2px;
+  }
+  .step-nav button:hover { border-color: var(--nv-deep); color: var(--nv-deep); }
+
+  /* ---------- 模式卡片 ---------- */
+  .patterns { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .patterns { grid-template-columns: 1fr; } }
+  .pattern { border: 1px solid var(--line-strong); background: #FFFFFF; padding: 22px 24px; }
+  .pattern h4 { font-family: var(--serif); font-size: 18px; margin-bottom: 8px; }
+  .pattern h4 .mono { font-size: 12px; margin-left: 8px; }
+  .pattern p { font-size: 14.5px; color: var(--ink-soft); }
+  .pattern .borrow {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 13.5px; color: var(--nv-deep);
+  }
+  .pattern .borrow b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- footer ---------- */
+  footer { padding: 56px 0 80px; }
+  footer .quiet { max-width: 640px; }
+  footer a { color: var(--nv-deep); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Agent Skill 工作原理 · 内部讲解</div>
+    <h1>一个 Skill 是怎么工作的</h1>
+    <p class="lede">
+      以 NVIDIA 官方 skill「rag-blueprint」v2.6.0 为标本。Skill 不是塞满上下文的说明书，
+      而是一份<strong>自带路由的指令包</strong>：元数据负责「什么时候被选中」，
+      主文件负责「分流到哪篇细节」，细节文档按需才读。
+    </p>
+    <div class="facts">
+      <div class="fact"><div class="n"><em>204</em> 行</div><div class="l">SKILL.md 主文件（薄路由器）</div></div>
+      <div class="fact"><div class="n"><em>30+</em> 篇</div><div class="l">references/ 按需加载的细节文档</div></div>
+      <div class="fact"><div class="n"><em>40+</em> 条</div><div class="l">allowed-tools 只读命令白名单</div></div>
+      <div class="fact"><div class="n"><em>0</em> 个</div><div class="l">写操作权限（无 Bash 写入类命令）</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="s1">
+  <div class="wrap">
+    <div class="sec-no">01 / 结构</div>
+    <h2>三层结构：元数据 → 路由器 → 细节库</h2>
+    <p class="sec-lede">
+      一个 skill 目录里通常只有三类东西，各管一段生命周期。理解这张图，就理解了 skill 90% 的工作原理。
+    </p>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="tag green">frontmatter</span>
+        <h3>元数据 · 被选中之前发生的事</h3>
+        <span class="size">YAML 头</span>
+      </div>
+      <div class="layer-body">
+        <ul>
+          <li><code>description</code> 前堆触发词：deploy / enable / troubleshoot / shutdown / configure……「特性名不用背，触发动词在 frontmatter 里」——选择器（人或模型）只凭这段文字决定要不要加载。</li>
+          <li><code>argument-hint</code>、<code>tags</code>、<code>frameworks</code>、<code>domain</code> 提供二次筛选信号。</li>
+          <li><code>compatibility</code> 声明运行前提（仓库检出 / Docker / K8s / Python 3.11+），不满足就不该被选中。</li>
+          <li><code>allowed-tools</code> 是权限白名单：只列只读命令前缀（<code>Bash(docker ps *)</code>、<code>Bash(nvidia-smi *)</code>……）+ Read / Grep / Glob。<strong>没有一条写操作。</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow-arrow">▼ 命中后加载</div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="tag">SKILL.md</span>
+        <h3>薄路由器 · 204 行的分流中枢</h3>
+        <span class="size">主入口</span>
+      </div>
+      <div class="layer-body">
+        <ul>
+          <li>意图路由表：用户意图 → 该读哪篇 reference（deploy → references/deploy.md；stop → references/shutdown.md）。</li>
+          <li>Configure 特性表：16 个特性关键词 → 16 篇配置文档（VLM、Guardrails、Agentic RAG、查询改写、摄取、搜索……）。</li>
+          <li>配一套固定流程（探测 → 定位 → 核对 → 应用 → 验证），见第 02 节步进器。</li>
+          <li>自身不带细节——细节全在 references/，所以主文件才能保持 204 行。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow-arrow">▼ 按需读取</div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="tag">references/</span>
+        <h3>细节库 · 用到才读的操作手册</h3>
+        <span class="size">30+ 篇</span>
+      </div>
+      <div class="layer-body">
+        <ul>
+          <li>configure/ 16 篇（每特性一篇）+ deploy/ 10 篇（Docker / Helm / 库 / NVIDIA 托管 / 自托管等形态）+ troubleshoot + shutdown。</li>
+          <li>同目录还有 skill-card.md（自评卡）、eval/（两套硬件画像的评估配置）、skill.oms.sig（签名）。</li>
+          <li>这正是「渐进式披露」：索引一行进上下文，全文命中才读——与我们的技能层设计同构。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="wrap">
+    <div class="sec-no">02 / 演示</div>
+    <h2>意图路由：一句话进来，分流到一篇文档</h2>
+    <p class="sec-lede">
+      SKILL.md 的第一张表就是路由器。点左边的用户原话，看它命中哪一行、流向哪篇文档——
+      所谓「智能」，很多时候就是这样一张诚实的表。
+    </p>
+
+    <div class="demo">
+      <div class="utterances" id="uttBox">
+        <div class="cap">用户原话（点击试试）</div>
+      </div>
+      <div class="route" id="routeBox"></div>
+    </div>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="wrap">
+    <div class="sec-no">03 / 流程</div>
+    <h2>Configure 八步：探测先于动手，变更必须验证</h2>
+    <p class="sec-lede">
+      以「改一个 RAG 特性配置」为例。注意它的纪律：能命令探测的不问用户，
+      配置文件与线上服务不一致要主动指出，改完必须验证——这套流程比细节文档更值得借鉴。
+    </p>
+
+    <div class="stepper">
+      <div class="steps" id="stepBox"></div>
+      <div class="step-detail" id="stepDetail"></div>
+    </div>
+  </div>
+</section>
+
+<section id="s4">
+  <div class="wrap">
+    <div class="sec-no">04 / 模式</div>
+    <h2>四个值得抄走的模式</h2>
+    <p class="sec-lede">
+      这些模式与具体产品无关，是 skill 这种形态的通用工艺。右栏是我们项目的落点。
+    </p>
+
+    <div class="patterns">
+      <div class="pattern">
+        <h4>权限白名单 <span class="mono">allowed-tools</span></h4>
+        <p>技能级声明自己能调用的工具，且只给只读命令前缀。技能被误加载的最坏结果被限制在「读了几眼」，而不是「改了什么」。</p>
+        <div class="borrow"><b>我们怎么落：</b>架构文档 3.3d 的权限分级与 skill 级 allowed-tools 组成双闸门。</div>
+      </div>
+      <div class="pattern">
+        <h4>探测先于提问 <span class="mono">Autonomy</span></h4>
+        <p>「一切自动探测：GPU、显存、驱动、Docker、端口、已有服务。凡是能用命令检查的，就直接检查——不要问用户。」只在必须用户操作（给 key、确认删除）时才问。</p>
+        <div class="borrow"><b>我们怎么落：</b>写进内核规范，JEV 决策前的召回阶段就是代码探测。</div>
+      </div>
+      <div class="pattern">
+        <h4>验证闭环 <span class="mono">Verify</span></h4>
+        <p>每篇文档的结尾都是验证：health endpoint、rollout status、容器状态。变更不以「执行完」结束，以「验证通过」结束。</p>
+        <div class="borrow"><b>我们怎么落：</b>架构文档第 7 节工具调用从「结果回填」升级为「执行后必须验证」。</div>
+      </div>
+      <div class="pattern">
+        <h4>自评五维 <span class="mono">skill-card</span></h4>
+        <p>Security / Correctness / Discoverability / Effectiveness / Efficiency。尤其 Discoverability（该加载时才加载）与 Effectiveness（带技能显著优于不带）——正好就是 A/B 评测的两个指标。</p>
+        <div class="borrow"><b>我们怎么落：</b>架构文档第 12 节 A/B harness 的指标直接对齐官方口径。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="quiet">
+      出处：<code>reference/nvidia-skills/rag-blueprint</code>，来自 <code>NVIDIA/skills</code>（Apache-2.0，commit fd9f146，2026-09-18 拉取）；
+      中文全文见同目录 <code>SKILL.zh-CN.md</code>（项目内参考译文，非 NVIDIA 官方版本，frontmatter 机读字段保持英文原值）。
+      局限：该 skill 管理的是 NVIDIA RAG Blueprint 产品栈，与本项目产品无关，本讲解只取其设计模式。
+    </p>
+  </div>
+</footer>
+
+<script>
+/* ---------- 数据：意图路由（取自 SKILL.md Intent Detection 表） ---------- */
+var UTTS = [
+  {
+    zh: "部署 RAG", en: "Deploy RAG",
+    row: "部署、安装、搭建、启动 RAG",
+    target: "references/deploy.md",
+    why: "整类操作共用一个入口：deploy.md 内部再按 Docker / Helm / 库三种形态分流。"
+  },
+  {
+    zh: "启用 VLM", en: "Enable VLM",
+    row: "配置、启用、修改、切换某特性 → VLM、VLM 嵌入、图像captioning",
+    target: "references/configure/vlm.md",
+    why: "先查部署形态定位配置文件（.env / values.yaml / config.yaml），再按 configure 流程改。"
+  },
+  {
+    zh: "RAG 不健康", en: "RAG is unhealthy",
+    row: "排障、调试、修复、报错、不健康",
+    target: "references/troubleshoot.md",
+    why: "歧义句靠上下文推断：「不健康」是症状词，路由到排障而非部署。"
+  },
+  {
+    zh: "停止 RAG", en: "Stop RAG",
+    row: "停止、关停、拆除、清理",
+    target: "references/shutdown.md",
+    why: "破坏性操作单独成篇，且要求用户确认后才执行清理。"
+  }
+];
+
+var uttBox = document.getElementById("uttBox");
+var routeBox = document.getElementById("routeBox");
+
+function renderRoute(i) {
+  var u = UTTS[i];
+  var btns = uttBox.querySelectorAll(".utt");
+  for (var k = 0; k < btns.length; k++) btns[k].classList.toggle("active", k === i);
+  routeBox.innerHTML =
+    '<div class="match">命中 SKILL.md · Intent Detection 表</div>' +
+    '<div class="table-row"><b>' + u.row + '</b></div>' +
+    '<div class="arrow-line">▼ 阅读并遵循</div>' +
+    '<div class="target"><div class="path">' + u.target + '</div></div>' +
+    '<div class="why">' + u.why + '</div>';
+}
+
+UTTS.forEach(function (u, i) {
+  var b = document.createElement("button");
+  b.className = "utt";
+  b.innerHTML = u.zh + '<span class="en">' + u.en + "</span>";
+  b.onclick = function () { renderRoute(i); };
+  uttBox.appendChild(b);
+});
+renderRoute(0);
+
+/* ---------- 数据：Configure 八步（取自 SKILL.md Configure Flow） ---------- */
+var STEPS = [
+  {
+    t: "匹配特性文档",
+    d: "从 16 行的特性关键词表里找到对应 reference（如 VLM → configure/vlm.md）。one 特性一步，多特性循环。",
+    pre: null
+  },
+  {
+    t: "探测运行环境",
+    d: "一条命令同时探四种形态：本地 NIM 容器、Docker RAG 服务、K8s pods、库进程。探测不到就明说 NO_XXX，不猜。",
+    pre: 'echo "=== NIM ===" && docker ps --format \'{{.Names}}\' | grep -iE \'(nim-llm|nemotron-(vlm-)?embedding|...)\' || echo "NO_LOCAL_NIMS"\necho "=== RAG ===" && docker ps --format \'{{.Names}}\' | grep -iE \'(rag-server|ingestor-server|elasticsearch|milvus|...)\' || echo "NO_DOCKER_RAG"\necho "=== K8S ===" && kubectl get pods -n rag | head -5 || echo "NO_K8S"\necho "=== LIBRARY ===" && ps aux | grep -E \'(nvidia_rag|uvicorn.*rag)\' | grep -v grep || echo "NO_LIBRARY"'
+  },
+  {
+    t: "定位配置文件",
+    d: "按探测结果查表确定配置文件位置，并把结论告诉用户、请其确认后才继续。",
+    table: [
+      ["本地 NIM 在跑", "RAG 服务在跑", "部署类型", "配置位置"],
+      ["是（Docker）", "任意", "自托管", "deploy/compose/.env"],
+      ["否", "是（Docker）", "NVIDIA 托管", "deploy/compose/nvdev.env"],
+      ["是（K8s）", "任意", "自托管", "values.yaml（NIM 段）"],
+      ["否", "是（K8s）", "NVIDIA 托管", "values.yaml（envVars）"],
+      ["—", "库进程", "库模式", "notebooks/config.yaml"]
+    ]
+  },
+  {
+    t: "核对当前状态",
+    d: "读配置文件 + 查线上服务实际 env，两边对不上就明确指出「服务持有过期配置，需要重启」。不带着错假设改。",
+    pre: '<span class="c"># Docker：读线上容器实际环境变量</span>\ndocker exec rag-server env | grep -E "<VAR_NAME>"\n\n<span class="c"># Helm：读 pod 实际 env</span>\nkubectl get pod -n rag -l app=rag-server -o jsonpath=\'{.items[0].spec.containers[0].env}\''
+  },
+  {
+    t: "检查 GPU 余量",
+    d: "特性若要额外 GPU，先查余量再动手；硬件不够时如实报告，而不是改到一半失败。",
+    pre: 'nvidia-smi --query-gpu=index,name,memory.total,memory.used --format=csv,noheader || echo "NO_GPU"'
+  },
+  {
+    t: "应用变更",
+    d: "改配置文件（env 文件是唯一事实来源：取消注释即启用，重新注释即禁用），再按平台重启受影响服务。",
+    pre: '<span class="c"># Docker：env 文件驱动，compose 分级重启</span>\nsource <env-file> && docker compose -f deploy/compose/<compose-file> up -d\n\n<span class="c"># Helm</span>\nhelm upgrade rag <chart> -n rag -f values.yaml\n\n<span class="c"># 库模式</span>\n<span class="c"># 编辑 notebooks/config.yaml 后重启 Python 进程</span>'
+  },
+  {
+    t: "验证",
+    d: "调 health endpoint / rollout status / 容器状态。变更以验证通过结束，不是以执行完结束。",
+    pre: '<span class="c"># Docker</span>\ncurl -s http://localhost:8081/v1/health?check_dependencies=true | head -1\n\n<span class="c"># Helm</span>\nkubectl rollout status deployment/rag-server -n rag --timeout=120s\n\n<span class="c"># 库模式</span>\ncurl -s http://localhost:8081/v1/health | head -1'
+  },
+  {
+    t: "失败则排障",
+    d: "重启或健康检查失败 → 转 references/troubleshoot.md；多特性请求 → 回到第 1 步循环。",
+    pre: null
+  }
+];
+
+var stepBox = document.getElementById("stepBox");
+var stepDetail = document.getElementById("stepDetail");
+var cur = 0;
+
+function renderStep(i) {
+  cur = (i + STEPS.length) % STEPS.length;
+  var s = STEPS[cur];
+  var btns = stepBox.querySelectorAll(".step-btn");
+  for (var k = 0; k < btns.length; k++) btns[k].classList.toggle("active", k === cur);
+  var html = "<h4>" + (cur + 1) + " / 8 · " + s.t + "</h4><div class='d'>" + s.d + "</div>";
+  if (s.pre) html += "<pre>" + s.pre + "</pre>";
+  if (s.table) {
+    html += "<table>";
+    s.table.forEach(function (r, ri) {
+      html += "<tr>" + r.map(function (c) {
+        return ri === 0 ? "<th>" + c + "</th>" : "<td><code>" + c + "</code></td>";
+      }).join("") + "</tr>";
+    });
+    html += "</table>";
+  }
+  html += '<div class="step-nav"><button id="prevBtn">← 上一步</button><button id="nextBtn">下一步 →</button></div>';
+  stepDetail.innerHTML = html;
+  document.getElementById("prevBtn").onclick = function () { renderStep(cur - 1); };
+  document.getElementById("nextBtn").onclick = function () { renderStep(cur + 1); };
+}
+
+STEPS.forEach(function (s, i) {
+  var b = document.createElement("button");
+  b.className = "step-btn";
+  b.innerHTML = '<span class="i">' + String(i + 1).padStart(2, "0") + "</span><span>" + s.t + "</span>";
+  b.onclick = function () { renderStep(i); };
+  stepBox.appendChild(b);
+});
+renderStep(0);
+</script>
+
+</body>
+</html>

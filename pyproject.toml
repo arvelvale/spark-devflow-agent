@@ -1,0 +1,13 @@
+[project]
+name = "dgx-spark-devflow-agent"
+version = "0.1.0"
+description = "跑在 NVIDIA DGX Spark 上的开发流 agent：JEV 结构化决策 + 本地 Nemotron / 云端 step-5 路由"
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --basetemp=var/pytest-tmp"
