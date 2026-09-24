@@ -84,7 +84,7 @@ python scripts/node.py serve     # 节点上起面板 + 本机 127.0.0.1:9000 �
 - 语音：点麦克风说话 → 转成文字进输入框，可以先改再发。**浏览器只在 localhost 或 https 下开放麦克风**
 
 前端开发：`cd web && npm run dev`（5173 端口，/api 代理到 127.0.0.1:9000）。自测截图：`node web/scripts/shot.mjs <URL> out.png [--dark] [--w 390 --h 844]`。
-`python -m agent serve --dev-no-auth` 可免登录，但只允许配合回环地址；挂公网（`serve --public`，监听 0.0.0.0:9000 → 组委会映射的 9051）一律要口令。
+`python -m agent serve --dev-no-auth` 可免登录，但只允许配合回环地址；挂公网（`serve --public`，监听 0.0.0.0:9000 → 节点公网地址的 9006，以登录表为准）一律要口令。
 
 ## 常用参数
 
