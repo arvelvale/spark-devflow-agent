@@ -1,7 +1,7 @@
 ---
 name: status-sync
 description: >-
-  同步状态 / 更新 Linear / 关 issue / sync：根据提交记录和测试结果，把 Linear issue 的状态和进展评论同步到最新。
+  同步状态 / 更新 Linear / 关 issue / sync：根据提交记录和测试结果，把 Linear issue 的状态和进展评论同步到最新。只改 Linear，不写日志文件，不生成口头总结。
 version: 0.1.0
 argument-hint: "<issue 编号，默认检查演示项目里所有进行中的 issue>"
 model: local

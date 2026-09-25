@@ -1,7 +1,7 @@
 ---
 name: standup-brief
 description: >-
-  站会 / 简报 / 昨天干了啥 / standup：汇总提交、Linear 和纪要，生成"昨日完成 / 今日计划 / 阻塞"三段口头简报，只在对话里回复，不写文件。
+  站会 / 简报 / 汇报 / 昨天干了啥 / standup：汇总提交、Linear 和纪要，生成"昨日完成 / 今日计划 / 阻塞"三段口头简报。只在对话里回复，不写文件，不改 Linear 状态。
 version: 0.1.0
 model: local
 allowed-tools: []
