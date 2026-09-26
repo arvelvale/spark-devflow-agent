@@ -13,10 +13,12 @@ FORBIDDEN_CHARS = set(";|&><`$\n")
 def run_command(args: dict, ctx: ToolContext) -> str:
     command = str(arg(args, "command", required=True)).strip()
     if any(ch in FORBIDDEN_CHARS for ch in command):
-        raise ToolError("命令里不能有 ; | & > < ` $ 或换行（不经过 shell，无法管道或重定向）")
+        raise ToolError("命令里不能有 ; | & > < ` $ 或换行（不经过 shell，无法管道或重定向）。"
+                        "需要特定数据或环境变量的验证，写成测试（测试里可以建临时文件、设环境变量）")
     allowed = next((p for p in ctx.shell_allow if command == p or command.startswith(p + " ")), None)
     if not allowed:
-        raise ToolError("命令不在白名单内。允许的前缀：" + " / ".join(ctx.shell_allow))
+        raise ToolError("命令不在白名单内。允许的前缀：" + " / ".join(ctx.shell_allow)
+                        + "。要验证某个行为，把它写成测试再跑测试，不要在命令行手工造数据")
     try:
         argv = shlex.split(command)
     except ValueError as exc:

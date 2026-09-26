@@ -2,7 +2,7 @@
 name: implement-change
 description: >-
   实现 / 开发 / 修 bug / 改代码 / implement：按 issue 或计划在工作区修改代码、补测试并跑通，在独立分支上提交。
-version: 0.2.0
+version: 0.2.1
 argument-hint: "<issue 编号、计划文件或要改的内容>"
 model: auto
 allowed-tools:
@@ -35,9 +35,10 @@ tags: [dev-flow, code]
 2. 先跑一次测试记下基线：优先 `run_skill_script` 跑 `test_report.py`（只回报结论和失败项）；脚本不可用再按 `AGENTS.md` 用 `run_command`。
 3. 在 `agent/<issue 编号或短名>` 分支上工作（`git_branch`）。已经在非 main 分支上就不用新建。
 4. 小步修改：优先 `edit_file` 局部替换；新文件用 `write_file`。
-5. 修 bug 先写能复现问题的测试，再改代码。
+5. 修 bug 先写能复现问题的测试，再改代码。**验收标准一律写成测试来验证**（比如"老数据仍能读取"就在测试里造一份老格式数据再断言），不要在命令行手工造数据、反复跑 CLI 看输出——命令白名单不支持那样做，只会空耗步数。
 6. 每完成一个切片：跑测试（同样优先 `test_report.py`）→ 通过后 `git_commit`（中文提交说明，一句话说清做了什么）→ 在 `update_plan` 里勾掉。
 7. 测试失败：读报错、定位、修复；同一处失败三次仍修不好就停下，如实报告。
+8. 测试全绿就提交并收尾，不要再做额外的手工验证。
 
 ## 输出契约
 回复包含：分支名、提交列表（短哈希 + 说明）、测试结果（通过数/失败数）、没完成的事。
