@@ -194,3 +194,49 @@ def test_truncated_output_gets_one_nudge(cfg, monkeypatch):
     res = agent.run_turn("修一下")
     assert res.reply == "改用工具后完成" and res.stopped == "final"
     assert any("不要在回复里贴大段代码" in (m.get("content") or "") for m in clients["local"].received[1])
+
+
+# ---------------- 跑偏提醒 ----------------
+def drift_decision(scope_by_step):
+    """在 pick("implement_change") 的基础上，门控 in_scope 按调用顺序取值。"""
+    dec = pick("implement_change")
+    base, it = dec.responder, iter(scope_by_step)
+
+    def responder(name, q, state):
+        if name == "in_scope":
+            return noul_ans(next(it))
+        if name == "collateral":
+            return noul_ans(0.05)
+        return base(name, q, state)
+    dec.responder = responder
+    return dec
+
+
+def edit_call(i):
+    return reply(calls=[("run_command", {"command": f"python -m tinyledger list --n {i}"})])
+
+
+def test_three_offtrack_writes_trigger_one_nudge(cfg, monkeypatch):
+    events = []
+    script = [edit_call(i) for i in range(4)] + [reply("收尾")]
+    agent, clients = make_agent(cfg, monkeypatch, script, decision=drift_decision([0.2, 0.3, 0.1, 0.2]),
+                                confirm=lambda req: True)
+    agent.trace.subscribe(events.append)
+    agent.run_turn("把金额的 bug 修了")
+    drift = [e for e in events if e["type"] == "guard.drift"]
+    assert len(drift) == 1 and drift[0]["data"]["streak"] == 3 and not validate_event(drift[0])
+    nudges = [m for m in agent.conv.messages if m["role"] == "user" and "系统提醒" in m["content"]]
+    assert len(nudges) == 1
+    # 提醒插在工具结果之后：它前面一条必须是 tool 消息，配对不被打断
+    i = agent.conv.messages.index(nudges[0])
+    assert agent.conv.messages[i - 1]["role"] == "tool"
+
+
+def test_in_scope_write_resets_streak(cfg, monkeypatch):
+    events = []
+    script = [edit_call(i) for i in range(5)] + [reply("收尾")]
+    agent, _ = make_agent(cfg, monkeypatch, script, decision=drift_decision([0.2, 0.2, 0.9, 0.2, 0.2]),
+                          confirm=lambda req: True)
+    agent.trace.subscribe(events.append)
+    agent.run_turn("把金额的 bug 修了")
+    assert not [e for e in events if e["type"] == "guard.drift"]

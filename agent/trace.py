@@ -14,6 +14,7 @@ EVENT_TYPES = {
     "llm.call", "tool.gate", "tool.call", "context.compress", "memory.write",
     "turn.end", "error",
     "subagent.start", "subagent.end",  # 2026-09-26 新增（只增不改）
+    "guard.drift",                     # 2026-09-26 新增：连续跑偏提醒
 }
 
 REQUIRED = ("v", "ts", "session", "turn", "seq", "type", "data")

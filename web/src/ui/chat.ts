@@ -34,6 +34,7 @@ function progressText(t: Turn): string {
     case "route.escalate": return `换到 ${last.data.to} 模型继续`;
     case "memory.write": return "正在记下值得记住的事";
     case "subagent.start": return "子助手正在并行调查";
+    case "guard.drift": return "最近几步有点跑偏，已提醒模型回到计划";
     case "subagent.end": return "子助手交回了结论";
     default: return "进行中";
   }

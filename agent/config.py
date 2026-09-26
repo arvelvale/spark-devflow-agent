@@ -118,6 +118,25 @@ class Thresholds:
     compress_target: float = 0.45
     keep_recent_turns: int = 2         # 最近几轮（含当前轮）原样保留
     keep_recent_tool_results: int = 4  # 最近几条工具结果不做截短
+    # 阶段 A（逐调用裁剪，参考 fast-jev-compaction）：JEV 对每个旧工具调用问两题，都是"还需要吗"，越大越该留。
+    #   keep_result ≥ compress_keep → 调用和结果原样保留
+    #   否则 keep_call ≥ compress_keep → 保留调用，结果截成开头 + 归档编号
+    #   否则 → 调用和结果一起移除（原文进归档，可 read_archive 取回）
+    compress_keep: float = 0.50
+    compress_state_tokens: int = 12000  # 发给 JEV 的整段对话视图估算上限（JEV 单请求约 32k）
+    compress_min_result: int = 200     # 结果短于这个字数的调用不值得问，直接留着
+    # 判过"保留"的调用，之后又新增多少次工具调用（上下文确实变了）才重新问。越小越勤快、JEV 开销越大。
+    # 2026-09-26 实测：不设这个时 19 步触发 18 次压缩、只有 2 次真删了东西，JEV 白花 5.7 万 token
+    compress_rejudge_after: int = 6
+    # 防抖：一次压缩之后，上下文至少再涨 context_budget × compress_cooldown 才会再压。越大越少压、越不抖。
+    # 2026-09-26 实测：每步都压时，刚重读回来的文件下一步又被截掉，模型反复重读直到撞步数上限
+    compress_cooldown: float = 0.15
+    # ---- 跑偏提醒 ----
+    # 写操作连续被 JEV 判为"不像这个请求需要的步骤"（in_scope 低于门控阈值）多少次，就提醒模型回到计划或收尾。
+    # 设计值 3 → 第 3、6、9… 次各提醒一次；中间只要有一次写操作被判为合理步骤，计数清零。
+    # 来由（2026-09-26 节点实测）：修完 DAY-298 后模型又绕了 16 步手工验证，门控每一步都判了"不像"，
+    # 但 --yes 下全部放行，这个信号被浪费了。
+    drift_streak: int = 3
     # ---- 轮内升级 ----
     # 本地模型连续给出几次非法工具参数就升级到云端
     malformed_before_escalate: int = 2

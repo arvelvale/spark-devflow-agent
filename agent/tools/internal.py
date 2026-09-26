@@ -23,6 +23,11 @@ def read_archive(args: dict, ctx: ToolContext) -> str:
     payload = ctx.archive.get(rid)
     if payload is None:
         raise ToolError(f"找不到归档 {rid}")
+    if isinstance(payload, list) and payload and isinstance(payload[0], dict) and "cid" in payload[0]:
+        # 阶段 A 逐调用裁剪的归档：[{cid, tool, arguments, result}]
+        want = str(arg(args, "call", "") or "")
+        rows = [r for r in payload if not want or r["cid"] == want]
+        return "\n\n".join(f"[{r['cid']}] {r['tool']}({r['arguments']})\n{r['result']}" for r in rows)[:12000]
     if isinstance(payload, list):  # 一整轮消息
         from ..context import render_messages
         return render_messages(payload, 12000)
@@ -64,8 +69,10 @@ TOOLS = [
                           "description": "关键证据：文件路径、命令、测试结果摘要"},
          }),
          Permission.READ, update_plan),
-    Tool("read_archive", "取回被压缩掉的对话原文或工具结果（编号见系统提示里的摘要或 [已压缩] 标记）。",
-         params({"id": {"type": "string"}}, ["id"]), Permission.READ, read_archive),
+    Tool("read_archive", "取回被压缩掉的对话原文或工具结果（编号见系统提示里的摘要或 [已压缩] 标记）。"
+         "逐调用裁剪的归档可以用 call 只取其中一个调用（如 t3）。",
+         params({"id": {"type": "string"}, "call": {"type": "string", "description": "可选：只取某个调用，如 t3"}}, ["id"]),
+         Permission.READ, read_archive),
     Tool("recall_memory", "按关键词检索长期记忆（之前会话里记下的事实、约定、决定）。",
          params({"query": {"type": "string"}, "k": {"type": "integer"}}, ["query"]), Permission.READ, recall_memory),
     Tool("read_skill_file", "读取本轮已加载技能目录下的参考文件（如 references/output-format.md）。",

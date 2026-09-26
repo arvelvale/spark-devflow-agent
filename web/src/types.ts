@@ -3,7 +3,7 @@
 export type EventType =
   | "turn.start" | "skill.select" | "route.model" | "route.escalate" | "memory.recall"
   | "llm.call" | "tool.gate" | "tool.call" | "context.compress" | "memory.write"
-  | "turn.end" | "error" | "subagent.start" | "subagent.end";
+  | "turn.end" | "error" | "subagent.start" | "subagent.end" | "guard.drift";
 
 export interface Usage { input_tokens: number; output_tokens: number }
 

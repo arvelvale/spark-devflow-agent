@@ -34,6 +34,11 @@ TRUNCATION_NUDGE = ("（系统提示）上一条输出太长被截断了。不�
                     "直接调用 edit_file / write_file 等工具修改文件；每次只改一处，改完再汇报。")
 
 
+DRIFT_NUDGE = ("（系统提醒）你最近连续 {n} 次写操作都被判断为不像完成当前请求需要的步骤（{tools}）。"
+               "停下来对照工作记忆里的待办：任务已经完成（测试通过、已提交）就直接给出最终回复；"
+               "还没完成就回到计划里的下一步。要验证某个行为，把它写成测试，不要继续尝试计划外的操作。")
+
+
 def new_session_id() -> str:
     return f"s-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
 
@@ -124,6 +129,8 @@ class Agent:
                                shell_allow=cfg.shell_allow)
         self.ratio = 1.0  # token 估算校准倍率 = 真实 prompt_tokens / 估算值
         self._current_ep = cfg.local
+        self._drift: list[str] = []
+        self._drift_nudged = 0
         self.ctx.delegate = lambda tasks: subagents.delegate(self, self._current_ep, tasks)
 
     # ------------------------------------------------------------------
@@ -175,6 +182,24 @@ class Agent:
         perm = Permission.READ if spec.permission == "read" else Permission.WRITE_LOCAL
         return dataclasses.replace(tool, permission=perm), True
 
+    def _track_drift(self, tool, g) -> None:
+        """写操作的 in_scope 低于门控阈值 = JEV 认为这一步跑偏了。不管用户（或 --yes）最后有没有放行，都记一笔。"""
+        if tool.permission == Permission.READ or g.appropriate is None or g.threshold is None or g.fallback:
+            return
+        if g.appropriate < g.threshold:
+            self._drift.append(tool.name)
+        else:
+            self._drift.clear()
+
+    def _drift_nudge(self, turn: int) -> None:
+        n = len(self._drift)
+        if n and n % self.th.drift_streak == 0 and n != self._drift_nudged:
+            self._drift_nudged = n
+            tools = "、".join(dict.fromkeys(self._drift[-n:]))
+            self.conv.add({"role": "user", "content": DRIFT_NUDGE.format(n=n, tools=tools)}, turn)
+            self.trace.emit("guard.drift", {"streak": n, "tools": self._drift[-self.th.drift_streak:],
+                                            "threshold": self.th.drift_streak})
+
     def _run_tool(self, call, allowed_write: set[str], request: str, tool_log: list[dict]) -> str:
         tool = self.registry.get(call.name)
         if call.parse_error:
@@ -191,6 +216,7 @@ class Agent:
         allowed = tool.permission == Permission.READ or tool.name in allowed_write or declared
         g = self.gate.check(tool, call.arguments, allowed=allowed, goal=self.working.goal, request=request,
                             plan=[t["item"] for t in self.working.todo])
+        self._track_drift(tool, g)
         self.trace.emit("tool.gate", {
             "tool": tool.name, "permission": tool.permission.value, "decision": g.decision, "reason": g.reason,
             "appropriate": None if g.appropriate is None else round(g.appropriate, 3), "threshold": g.threshold,
@@ -222,6 +248,8 @@ class Agent:
         t_start = time.monotonic()
         self.trace.turn += 1
         turn = self.trace.turn
+        self._drift: list[str] = []   # 本轮连续被判跑偏的写操作
+        self._drift_nudged = 0
         before = self._usage_snapshot()
         self.trace.emit("turn.start", {"input": text, "source": source})
         recent = render_messages(self.conv.messages[-6:], 1200)
@@ -298,6 +326,7 @@ class Agent:
                     self.conv.add({"role": "tool", "tool_call_id": call.id, "content": content}, turn)
                     bad += bool(call.parse_error)
                 malformed = malformed + 1 if bad else 0
+                self._drift_nudge(turn)  # 放在整批工具结果之后，不打断 tool_calls 与结果的配对
                 if (malformed >= self.th.malformed_before_escalate and tier == "local" and not escalated
                         and "cloud" not in tried and self.router.healthy(self.cfg.cloud)):
                     self.trace.emit("route.escalate", {"from": ep.name, "to": "cloud",

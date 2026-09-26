@@ -1,6 +1,6 @@
 import {
   ArrowUpRight, Brain, Check, CircleSlash, Cloud, Cpu, FileText, Gauge, Layers, ListChecks, Route, ShieldCheck,
-  CornerDownLeft, Sparkles, TriangleAlert, Users, Wrench, X,
+  Compass, CornerDownLeft, Sparkles, TriangleAlert, Users, Wrench, X,
 } from "lucide";
 import {
   DIFFICULTY_LABEL, ENDPOINT_LABEL, GATE_LABEL, ms, num, PERMISSION_LABEL, skillName, TIER_LABEL, tokens,
@@ -155,9 +155,18 @@ function stepItem(e: TraceEvent): HTMLElement | null {
       return h("li", { class: "step" }, icon(Layers, 13, "step-icon"),
         h("div", { class: "step-body" }, h("div", { class: "step-title" },
           d.noop ? "超预算，但近几轮受保护，这次不压" : `压缩上下文 ${tokens(d.before_tokens)} → ${tokens(d.after_tokens)}`),
+          ((d.phases ?? []) as any[]).filter((p) => p.phase === "tool_calls").map((p) => h("div", { class: "step-sub" },
+            h("span", null, `JEV 逐个调用裁定：保留 ${p.kept} · 截短 ${p.truncated} · 移除 ${p.removed}`),
+            h("span", { class: "mono muted" }, `${p.requests} 次请求`))),
+          d.fallback_reason && h("div", { class: "step-sub muted" }, `退回规则截短：${d.fallback_reason}`),
           (d.chunks ?? []).length > 0 && h("div", { class: "step-sub" },
             (d.chunks as any[]).map((c) => h("span", { class: "tag" },
               `${c.id} ${c.verdict === "drop" ? "丢弃" : c.verdict === "summarize_forced" ? "强制摘要" : "留摘要"}`)))));
+    case "guard.drift":
+      return h("li", { class: "step warn" }, icon(Compass, 13, "step-icon"),
+        h("div", { class: "step-body" },
+          h("div", { class: "step-title" }, `提醒回到计划 · 连续 ${d.streak} 次写操作被 JEV 判为跑偏`),
+          h("div", { class: "step-sub" }, (d.tools as string[]).map((n) => h("code", null, n)))));
     case "subagent.start":
       return h("li", { class: "step sub" }, icon(Users, 13, "step-icon"),
         h("div", { class: "step-body" },
