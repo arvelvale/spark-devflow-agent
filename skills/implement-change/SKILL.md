@@ -2,7 +2,7 @@
 name: implement-change
 description: >-
   实现 / 开发 / 修 bug / 改代码 / implement：按 issue 或计划在工作区修改代码、补测试并跑通，在独立分支上提交。
-version: 0.1.0
+version: 0.2.0
 argument-hint: "<issue 编号、计划文件或要改的内容>"
 model: auto
 allowed-tools:
@@ -11,6 +11,11 @@ allowed-tools:
   - run_command
   - git_branch
   - git_commit
+scripts:
+  - name: test_report.py
+    description: 跑测试，只回报通过与否、统计和失败项（比 run_command 的整屏输出省上下文）
+    permission: write_local
+    args: "[测试路径或 pytest 参数，可省略]"
 triggers:
   - 把金额精度的 bug 修了
   - 按 docs/plans 里的计划把 CSV 导出实现一下
@@ -27,11 +32,11 @@ tags: [dev-flow, code]
 
 ## 步骤
 1. 读 `AGENTS.md` 的代码约定；读 issue 或计划；用 `update_plan` 列出切片待办。
-2. 先按 `AGENTS.md` 里的测试命令跑一次（`run_command`，一般是 `python -m unittest`），记下基线。
+2. 先跑一次测试记下基线：优先 `run_skill_script` 跑 `test_report.py`（只回报结论和失败项）；脚本不可用再按 `AGENTS.md` 用 `run_command`。
 3. 在 `agent/<issue 编号或短名>` 分支上工作（`git_branch`）。已经在非 main 分支上就不用新建。
 4. 小步修改：优先 `edit_file` 局部替换；新文件用 `write_file`。
 5. 修 bug 先写能复现问题的测试，再改代码。
-6. 每完成一个切片：跑测试 → 通过后 `git_commit`（中文提交说明，一句话说清做了什么）→ 在 `update_plan` 里勾掉。
+6. 每完成一个切片：跑测试（同样优先 `test_report.py`）→ 通过后 `git_commit`（中文提交说明，一句话说清做了什么）→ 在 `update_plan` 里勾掉。
 7. 测试失败：读报错、定位、修复；同一处失败三次仍修不好就停下，如实报告。
 
 ## 输出契约

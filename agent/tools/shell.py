@@ -5,7 +5,7 @@ import shlex
 import subprocess
 import sys
 
-from .base import Permission, Tool, ToolContext, ToolError, arg, params
+from .base import Permission, Tool, ToolContext, ToolError, arg, params, subprocess_env
 
 FORBIDDEN_CHARS = set(";|&><`$\n")
 
@@ -25,7 +25,7 @@ def run_command(args: dict, ctx: ToolContext) -> str:
         argv[0] = sys.executable  # 节点上可能只有 python3
     timeout = min(int(arg(args, "timeout", 120)), 300)
     try:
-        proc = subprocess.run(argv, cwd=ctx.workspace, capture_output=True, text=True,
+        proc = subprocess.run(argv, cwd=ctx.workspace, capture_output=True, text=True, env=subprocess_env(),
                               encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         raise ToolError(f"命令超时（{timeout}s）")

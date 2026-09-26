@@ -1,6 +1,8 @@
 """工具注册表、权限级别、结果截断与路径沙箱。"""
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -31,6 +33,7 @@ class ToolContext:
     memory: "MemoryStore | None" = None
     linear: "LinearClient | None" = None
     skill_dirs: dict[str, Path] = field(default_factory=dict)  # 本轮已命中技能 → 目录
+    skill_scripts: dict[str, dict] = field(default_factory=dict)  # 本轮已命中技能 → {脚本名: SkillScript}
     shell_allow: tuple[str, ...] = ()
 
 
@@ -104,3 +107,18 @@ def arg(args: dict, name: str, default: Any = None, *, required: bool = False) -
             raise ToolError(f"缺少参数 {name}")
         return default
     return args[name]
+
+
+# 子进程只拿到这些环境变量：工作区代码（测试、技能脚本）不该看到任何 API Key 和代理设置
+_ENV_KEEP = ("PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL",
+             "COMSPEC", "PATHEXT")
+
+
+def subprocess_env(**extra: str) -> dict[str, str]:
+    env = {k: os.environ[k] for k in _ENV_KEEP if k in os.environ}
+    env.update({"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"})
+    env.update(extra)
+    return env
+
+
+PYTHON = sys.executable

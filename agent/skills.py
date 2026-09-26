@@ -32,6 +32,20 @@ class SkillFormatError(Exception):
     pass
 
 
+SCRIPT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*\.py$")
+SCRIPT_PERMISSIONS = {"read", "write_local"}
+
+
+@dataclass
+class SkillScript:
+    """技能自带的脚本（scripts/<name>）。permission 是技能作者的声明：
+    read = 只读取信息（直接运行）；write_local = 会执行工作区代码或改文件（走 JEV 门控）。"""
+    name: str
+    description: str
+    permission: str
+    args_hint: str = ""
+
+
 @dataclass
 class Skill:
     name: str
@@ -46,6 +60,10 @@ class Skill:
     argument_hint: str = ""
     tags: list[str] = field(default_factory=list)
     internal: bool = False
+    scripts: list[SkillScript] = field(default_factory=list)
+
+    def script(self, name: str) -> SkillScript | None:
+        return next((s for s in self.scripts if s.name == name), None)
 
     @property
     def key(self) -> str:
@@ -96,6 +114,26 @@ def parse_skill(path: Path) -> Skill:
         problems.append("not-for 至少 1 条")
     if not body:
         problems.append("正文为空")
+    scripts = []
+    raw_scripts = meta.get("scripts") or []
+    if not isinstance(raw_scripts, list):
+        problems.append("scripts 必须是列表")
+        raw_scripts = []
+    for item in raw_scripts:
+        if not isinstance(item, dict):
+            problems.append("scripts 的每一项必须是 {name, description, permission}")
+            continue
+        sname, perm = str(item.get("name", "")), str(item.get("permission", ""))
+        if not SCRIPT_NAME_RE.match(sname):
+            problems.append(f"脚本名 {sname!r} 不合法（小写字母数字下划线连字符，.py 结尾）")
+        elif not (path.parent / "scripts" / sname).is_file():
+            problems.append(f"声明了脚本 {sname}，但 scripts/{sname} 不存在")
+        if perm not in SCRIPT_PERMISSIONS:
+            problems.append(f"脚本 {sname} 的 permission 只能是 read 或 write_local")
+        if not str(item.get("description", "")).strip():
+            problems.append(f"脚本 {sname} 缺少 description")
+        scripts.append(SkillScript(sname, " ".join(str(item.get("description", "")).split()), perm,
+                                   str(item.get("args", ""))))
     if problems:
         raise SkillFormatError(f"{path}: " + "；".join(problems))
     return Skill(
@@ -103,6 +141,7 @@ def parse_skill(path: Path) -> Skill:
         triggers=[str(t) for t in triggers], not_for=[str(t) for t in not_for], body=body, path=path,
         model=model, argument_hint=str(meta.get("argument-hint", "")),
         tags=[str(t) for t in meta.get("tags") or []], internal=bool(meta.get("internal", False)),
+        scripts=scripts,
     )
 
 

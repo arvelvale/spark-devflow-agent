@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -145,7 +146,7 @@ class Agent:
                                   [m for m in mem.brief if m.privacy != "local"])
         return render_system(
             skill_index="\n".join(s.index_line() for s in self.selector.skills),
-            skill_blocks="\n\n".join(render_skill(s.name, s.body) for s in sel.skills),
+            skill_blocks="\n\n".join(render_skill(s.name, s.body, s.scripts) for s in sel.skills),
             working=self.working.render(),
             memories=mem.render(),
             summaries=self.conv.render_summaries(),
@@ -160,6 +161,17 @@ class Agent:
                 return ep
         return None
 
+    def _resolve_tool(self, tool, args: dict):
+        """技能脚本的实际权限按技能 frontmatter 的声明：read → 只读直接跑；write_local → 走门控。
+        声明本身就是技能作者给的白名单，所以已声明的脚本视同在 allowed-tools 里。未声明的脚本由工具自己拒绝。"""
+        if tool.name != "run_skill_script":
+            return tool, False
+        spec = self.ctx.skill_scripts.get(str(args.get("skill", "")), {}).get(str(args.get("script", "")))
+        if spec is None:
+            return tool, False
+        perm = Permission.READ if spec.permission == "read" else Permission.WRITE_LOCAL
+        return dataclasses.replace(tool, permission=perm), True
+
     def _run_tool(self, call, allowed_write: set[str], request: str, tool_log: list[dict]) -> str:
         tool = self.registry.get(call.name)
         if call.parse_error:
@@ -172,7 +184,8 @@ class Agent:
             if call.name in self.selector.by_name:
                 return f"[未执行] {call.name} 是技能不是工具：它的步骤已经在系统提示里，直接按步骤用工具执行。"
             return f"[未执行] 没有叫 {call.name} 的工具。"
-        allowed = tool.permission == Permission.READ or tool.name in allowed_write
+        tool, declared = self._resolve_tool(tool, call.arguments)
+        allowed = tool.permission == Permission.READ or tool.name in allowed_write or declared
         g = self.gate.check(tool, call.arguments, allowed=allowed, goal=self.working.goal, request=request,
                             plan=[t["item"] for t in self.working.todo])
         self.trace.emit("tool.gate", {
@@ -228,10 +241,13 @@ class Agent:
         allowed_write: set[str] = set()
         for s in sel.skills:
             allowed_write.update(s.allowed_tools)
+        has_scripts = any(s.scripts for s in sel.skills)
         exposed = [n for n in self.registry.names()
-                   if self.registry.get(n).permission == Permission.READ or n in allowed_write]
+                   if self.registry.get(n).permission == Permission.READ or n in allowed_write
+                   or (n == "run_skill_script" and has_scripts)]
         schemas = self.registry.schemas(exposed)
         self.ctx.skill_dirs = {s.name: s.path.parent for s in sel.skills}
+        self.ctx.skill_scripts = {s.name: {x.name: x for x in s.scripts} for s in sel.skills}
 
         ep, tier = route.endpoint, route.tier
         tried = {ep.name}

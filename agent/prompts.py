@@ -7,6 +7,7 @@ BASE = """你是一个跑在 NVIDIA DGX Spark 上的开发流助手，帮开发�
 
 工作方式：
 1. 先探测再行动：能用只读工具查到的（文件、提交、issue、纪要），直接查，不要问用户。
+   看代码先用 code_outline 看骨架、find_symbol 找定义和调用，再用 read_file 按行号只读需要的那段；不要整文件通读。
 2. 多步任务开始时，调用 update_plan 写下目标和待办；每完成一步更新一次。工作记忆不会被压缩丢掉。
 3. 技能不是工具，不能调用；本轮加载的技能说明就在下方，照它的步骤用工具执行。
 4. 写操作（改文件、提交、改 Linear）由系统做门控，可能需要用户确认；被拒绝时不要换个工具绕过去，说明情况即可。
@@ -32,5 +33,10 @@ def render_system(*, skill_index: str, skill_blocks: str, working: str, memories
     return "\n\n".join(parts)
 
 
-def render_skill(name: str, body: str) -> str:
-    return f'<skill name="{name}">\n{body}\n</skill>'
+def render_skill(name: str, body: str, scripts: list | None = None) -> str:
+    tail = ""
+    if scripts:
+        rows = "\n".join(f"- {s.name}（{'只读' if s.permission == 'read' else '会执行代码，需门控'}）：{s.description}"
+                         + (f"　参数：{s.args_hint}" if s.args_hint else "") for s in scripts)
+        tail = f"\n\n可用脚本（用 run_skill_script 运行，skill={name}）：\n{rows}"
+    return f'<skill name="{name}">\n{body}{tail}\n</skill>'
