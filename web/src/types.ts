@@ -70,7 +70,7 @@ export interface SessionDetail {
 
 export interface SessionSummary { id: string; updated: number; turns: number; title: string; live: boolean }
 
-export interface Service { ok: boolean; model: string }
+export interface Service { ok: boolean; model: string; private?: boolean }
 
 export interface Status {
   services: Record<"local" | "backup" | "cloud" | "jev" | "linear", Service>;
@@ -99,4 +99,34 @@ export interface Turn {
   events: TraceEvent[];
   reply?: string;
   done?: TurnDone;
+}
+
+// ---- 模型设置（/api/models）：Key 原文永远不下发 ----
+export type Slot = "local" | "backup" | "cloud";
+export interface SlotRef { provider: string; model: string }
+export interface ProviderView {
+  id: string;
+  name: string;
+  base_url: string;
+  private: boolean;
+  use_proxy: boolean;
+  has_key: boolean;
+  key_source: "panel" | "env" | null;
+  key_env: string;
+  models: { name: string; max_tokens: number }[];
+}
+export interface Preset { id: string; name: string; base_url: string; use_proxy?: boolean; private?: boolean }
+export interface ModelsView {
+  saved: boolean;
+  providers: ProviderView[];
+  slots: Partial<Record<Slot, SlotRef>>;
+  presets: Preset[];
+}
+export interface ProviderInput {
+  name: string;
+  base_url: string;
+  api_key?: string;
+  private: boolean;
+  use_proxy: boolean;
+  models: { name: string; max_tokens?: number }[];
 }

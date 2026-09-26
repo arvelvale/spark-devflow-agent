@@ -30,9 +30,9 @@ def transcribe(cfg: Config, audio: bytes, fmt: str = "wav", language: str = "zh"
         raise AsrError("录音太长了，请控制在一分钟以内")
     if fmt not in FORMATS:
         raise AsrError(f"不支持的音频格式 {fmt}")
-    ep = cfg.cloud
+    ep = cfg.asr or cfg.cloud
     if not ep.api_key:
-        raise AsrError("未配置 STEPFUN_API_KEY")
+        raise AsrError("未配置阶跃的 API Key（.env 的 STEPFUN_API_KEY 或面板模型设置）")
     body = {"audio": {"data": base64.b64encode(audio).decode("ascii"), "input": {
         "transcription": {"language": language, "model": os.environ.get("AGENT_ASR_MODEL", "stepaudio-2.5-asr"),
                           "enable_itn": True},

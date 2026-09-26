@@ -49,14 +49,29 @@ class Endpoint:
     extra: dict = field(default_factory=dict)  # 附加到请求体的字段
     no_think: dict = field(default_factory=dict)  # 关闭思考时额外合并的字段（辅助任务用）
     max_tokens: int = 4096        # 主循环单次输出上限（推理 token 也算在内）
+    api_key_value: str = ""       # 面板「模型设置」里填的 Key；非空时优先于 api_key_env
+    # 私有 = 部署在自己控制的机器上。只有私有模型能看到隐私记忆、跑摘要和记忆抽取。
+    # None = 按分工位推断：local / backup 私有，cloud 不私有（与改造前"云端轮次过滤隐私"的行为一致）
+    private: bool | None = None
+    provider: str = ""            # 来自哪个供应商（models.json 的 id），状态展示用
 
     @property
     def api_key(self) -> str:
+        if self.api_key_value:
+            return self.api_key_value
         return os.environ.get(self.api_key_env, "") if self.api_key_env else ""
 
     @property
+    def needs_key(self) -> bool:
+        return bool(self.api_key_env or self.api_key_value)
+
+    @property
     def configured(self) -> bool:
-        return not self.api_key_env or bool(self.api_key)
+        return not self.needs_key or bool(self.api_key)
+
+    @property
+    def is_private(self) -> bool:
+        return self.private if self.private is not None else self.name in ("local", "backup")
 
 
 @dataclass
@@ -110,9 +125,9 @@ class Thresholds:
 
 @dataclass
 class Config:
-    local: Endpoint
-    backup: Endpoint
-    cloud: Endpoint
+    local: Endpoint     # 分工位「主力」
+    backup: Endpoint    # 分工位「备用」
+    cloud: Endpoint     # 分工位「难题」
     jev_url: str
     jev_model: str
     jev_use_proxy: bool
@@ -135,6 +150,7 @@ class Config:
     )
     memory_extract: bool = True
     local_thinking: bool = True   # 本地主模型在主循环里是否开思考；辅助任务一律关
+    asr: Endpoint | None = None   # 语音识别（阶跃），和「难题」分工位解耦：换了难题模型语音输入照常可用
 
     @property
     def jev_key(self) -> str:
@@ -144,6 +160,10 @@ class Config:
     def linear_key(self) -> str:
         return os.environ.get("LINEAR_API_KEY", "")
 
+    @property
+    def models_path(self) -> Path:
+        return self.data_dir / "models.json"
+
     @classmethod
     def load(cls, workspace: str | Path | None = None) -> "Config":
         load_dotenv()
@@ -151,7 +171,7 @@ class Config:
         th.context_budget = int(_env("AGENT_CONTEXT_BUDGET", str(th.context_budget)))
         data_dir = Path(_env("AGENT_DATA_DIR", str(ROOT / "var")))
         ws = Path(workspace) if workspace else Path(_env("AGENT_WORKSPACE", str(data_dir / "workspace" / "tinyledger")))
-        return cls(
+        cfg = cls(
             local=Endpoint(
                 name="local",
                 base_url=_env("AGENT_LOCAL_BASE", "http://127.0.0.1:8000/v1"),
@@ -192,3 +212,8 @@ class Config:
             memory_extract=_flag("AGENT_MEMORY_EXTRACT", True),
             local_thinking=_flag("AGENT_LOCAL_THINKING", True),
         )
+        cfg.asr = Endpoint("asr", cfg.cloud.base_url, "", api_key_env="STEPFUN_API_KEY", use_proxy=cfg.cloud.use_proxy)
+        # 面板里保存过模型设置（var/models.json）就以它为准；没有则沿用上面的默认值和环境变量
+        from .models import ModelStore
+        ModelStore(cfg.models_path).apply(cfg)
+        return cfg

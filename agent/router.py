@@ -48,13 +48,13 @@ class ModelRouter:
         self._health: dict[str, tuple[float, bool]] = {}
 
     def healthy(self, ep: Endpoint, ttl: float = 60.0) -> bool:
-        """本地服务探活（GET /models，1.5 秒超时，结果缓存 ttl 秒）。云端只看有没有 key。"""
-        if ep.api_key_env:
+        """免 Key 的服务探活（GET /models，1.5 秒超时，结果缓存 ttl 秒）。要 Key 的只看 Key 在不在。"""
+        if ep.needs_key:
             return ep.configured
         cached = self._health.get(ep.name)
         if cached and time.monotonic() - cached[0] < ttl:
             return cached[1]
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(*([] if ep.use_proxy else [urllib.request.ProxyHandler({})]))
         try:
             with opener.open(ep.base_url.rstrip("/") + "/models", timeout=1.5) as resp:
                 ok = resp.status == 200

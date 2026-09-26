@@ -29,12 +29,13 @@ export function skillName(key: string): string {
   return key === "none" ? "不用技能" : key.replace(/_/g, "-");
 }
 
-export const TIER_LABEL: Record<string, string> = { local: "本地", cloud: "云端" };
+// 分工位名。具体是哪个模型由「模型设置」决定，轨迹里另有 model 字段
+export const TIER_LABEL: Record<string, string> = { local: "主力", cloud: "难题" };
 
 export const ENDPOINT_LABEL: Record<string, string> = {
-  local: "本地 Nemotron",
-  backup: "本地备用 Qwen",
-  cloud: "云端 step-5",
+  local: "主力",
+  backup: "备用",
+  cloud: "难题",
   jev: "JEV",
 };
 

@@ -94,7 +94,7 @@ class LLMClient:
     ) -> ChatResult:
         ep = self.endpoint
         if not ep.configured:
-            raise LLMError(f"{ep.name} 未配置密钥（{ep.api_key_env}）")
+            raise LLMError(f"{ep.name}（{ep.model}）没有配置 API Key")
         body: dict = {
             "model": ep.model,
             "messages": messages,

@@ -1,4 +1,4 @@
-import type { MemoryItem, SessionDetail, SessionSummary, Status } from "./types";
+import type { MemoryItem, ModelsView, ProviderInput, SessionDetail, SessionSummary, Slot, SlotRef, Status } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -56,6 +56,16 @@ export const api = {
   memory: (status: "active" | "pending") => request<MemoryItem[]>("GET", `/api/memory?status=${status}`),
   approveMemory: (id: string) => request<{ ok: boolean }>("POST", `/api/memory/${encodeURIComponent(id)}/approve`, {}),
   forgetMemory: (id: string) => request<{ ok: boolean }>("DELETE", `/api/memory/${encodeURIComponent(id)}`),
+  models: () => request<ModelsView>("GET", "/api/models"),
+  setSlots: (slots: Partial<Record<Slot, SlotRef>>) => request<ModelsView>("PUT", "/api/models/slots", slots),
+  saveProvider: (id: string, body: ProviderInput) =>
+    request<ModelsView>("PUT", `/api/models/providers/${encodeURIComponent(id)}`, body),
+  deleteProvider: (id: string) => request<ModelsView>("DELETE", `/api/models/providers/${encodeURIComponent(id)}`),
+  discoverModels: (id: string) =>
+    request<{ models: string[] }>("POST", `/api/models/providers/${encodeURIComponent(id)}/discover`, {}),
+  testModel: (id: string, model: string) =>
+    request<{ ok: boolean; latency_ms?: number; reply?: string; error?: string }>(
+      "POST", `/api/models/providers/${encodeURIComponent(id)}/test`, { model }),
   asr: (wav: Blob) => request<{ text: string }>("POST", "/api/asr?format=wav", undefined, wav),
   streamUrl: (id: string) => `/api/sessions/${encodeURIComponent(id)}/stream`,
 };

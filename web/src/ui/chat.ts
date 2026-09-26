@@ -21,7 +21,7 @@ function progressText(t: Turn): string {
   const steps = t.events.filter((e) => e.type === "llm.call").length;
   switch (last.type) {
     case "turn.start": return "正在挑选合适的技能";
-    case "skill.select": return "正在决定用本地还是云端模型";
+    case "skill.select": return "正在决定交给主力还是难题模型";
     case "route.model": return "正在翻相关的长期记忆";
     case "memory.recall": return "模型开始思考了";
     case "llm.call": {

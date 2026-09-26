@@ -50,7 +50,8 @@ class TurnResult:
 
 
 class LocalFirst:
-    """辅助任务（摘要、记忆抽取、基线选技能）用的模型：只用本地，隐私内容不出节点。"""
+    """辅助任务（摘要、记忆抽取、基线选技能）用的模型：只用私有模型，隐私内容不出自己的机器。
+    主力和备用都被换成了外部 API 时，这里直接报不可用，调用方各自降级（摘要走规则、不抽取记忆）。"""
 
     def __init__(self, agent: "Agent"):
         self.agent = agent
@@ -58,14 +59,14 @@ class LocalFirst:
     def chat(self, messages: list[dict], tools=None, **kw):
         errors = []
         for ep in (self.agent.cfg.local, self.agent.cfg.backup):
-            if not self.agent.router.healthy(ep):
+            if not ep.is_private or not self.agent.router.healthy(ep):
                 continue
             try:
                 return self.agent.clients[ep.name].chat(messages, tools, **kw)
             except LLMError as exc:
                 errors.append(str(exc))
                 self.agent.router.mark_down(ep)
-        raise LLMError("本地模型都不可用" + (f"：{errors[-1]}" if errors else ""))
+        raise LLMError("没有可用的私有模型" + (f"：{errors[-1]}" if errors else ""))
 
     def complete(self, prompt: str, max_tokens: int = 800) -> str:
         """辅助任务：关思考、温度 0。"""
@@ -138,8 +139,8 @@ class Agent:
                 out[name] = d
         return out
 
-    def _system(self, sel: Selection, mem: MemorySelection, tier: str) -> str:
-        if tier == "cloud":  # 云端轮次再过滤一遍隐私记忆（轮内升级时 mem 是按本地选的）
+    def _system(self, sel: Selection, mem: MemorySelection, private: bool) -> str:
+        if not private:  # 非私有模型再过滤一遍隐私记忆（轮内升级时 mem 是按主力选的）
             mem = MemorySelection([m for m in mem.full if m.privacy != "local"],
                                   [m for m in mem.brief if m.privacy != "local"])
         return render_system(
@@ -222,7 +223,7 @@ class Agent:
                                         "model": route.endpoint.model, "reason": route.reason,
                                         "scores": route.scores}, fallback=route.fallback)
 
-        mem = self.memory.select(text, self.working.goal, route.tier)
+        mem = self.memory.select(text, self.working.goal, "local" if route.endpoint.is_private else "cloud")
 
         allowed_write: set[str] = set()
         for s in sel.skills:
@@ -239,16 +240,16 @@ class Agent:
         reply, stopped, steps = "", "max_steps", 0
         for step in range(1, self.cfg.max_steps + 1):
             steps = step
-            system = self._system(sel, mem, tier)
+            system = self._system(sel, mem, ep.is_private)
             if self.compressor.maybe_compress(self.conv, estimate_tokens(system), self.working, turn, self.ratio):
-                system = self._system(sel, mem, tier)
+                system = self._system(sel, mem, ep.is_private)
             messages = [{"role": "system", "content": system}] + self.conv.messages
             est = estimate_tokens(system) + self.conv.tokens()
             try:
                 res = self.clients[ep.name].chat(messages, schemas, max_tokens=ep.max_tokens,
                                                  thinking=self.cfg.local_thinking or ep.name == "cloud")
             except LLMError as exc:
-                if ep.api_key_env == "":
+                if not ep.needs_key:
                     self.router.mark_down(ep)
                 nxt = self._next_endpoint(ep, tried)
                 self.trace.emit("error", {"where": "llm", "message": str(exc), "handled": nxt is not None})

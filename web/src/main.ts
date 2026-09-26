@@ -6,6 +6,7 @@ import { createComposer } from "./ui/composer";
 import { h, icon, mount } from "./ui/dom";
 import { renderDrawer } from "./ui/drawer";
 import { renderLogin } from "./ui/login";
+import { createModelSettings } from "./ui/models";
 import { renderSidebar } from "./ui/sidebar";
 import { renderTracePanel } from "./ui/trace";
 
@@ -16,6 +17,8 @@ const sidebar = h("aside", { class: "sidebar" });
 const header = h("header", { class: "chat-head" });
 const messages = h("div", { class: "messages" });
 const composer = createComposer();
+const modelSettings = createModelSettings();
+let lastDrawer: string | null = null;
 const panel = h("aside", { class: "panel" });
 const overlay = h("div", { class: "overlay-root" });
 const toastBox = h("div", { class: "toast-root", attrs: { "aria-live": "polite" } });
@@ -33,7 +36,7 @@ function renderHeader(): (HTMLElement | null)[] {
     ? h("div", { class: "seg small" },
         ["auto", "local", "cloud"].map((t) => h("button", {
           class: ["seg-btn", cur.tier === t && "on"], title: "模型档位（下一轮生效）", onclick: () => void setTier(t),
-        }, { auto: "自动", local: "本地", cloud: "云端" }[t]!)))
+        }, { auto: "自动", local: "主力", cloud: "难题" }[t]!)))
     : null;
   return [
     h("button", { class: "icon-btn only-mobile", title: "会话列表", onclick: () => update((s) => (s.sidebarOpen = true)) }, icon(Menu, 18)),
@@ -76,7 +79,16 @@ function render(): void {
   const turnCount = state.current?.turns.size ?? 0;
   if (nearBottom || turnCount !== lastTurnCount) messages.scrollTop = messages.scrollHeight;
   lastTurnCount = turnCount;
-  mount(overlay, renderDrawer());
+  // 模型设置里有输入框，只在打开时挂一次，之后的全局重绘不碰它
+  if (state.drawer === "models") {
+    if (lastDrawer !== "models") {
+      modelSettings.open();
+      mount(overlay, modelSettings.el);
+    }
+  } else {
+    mount(overlay, renderDrawer());
+  }
+  lastDrawer = state.drawer;
   mount(toastBox, state.toast && h("div", { class: `toast ${state.toast.kind}` }, state.toast.text));
   composer.sync();
 }

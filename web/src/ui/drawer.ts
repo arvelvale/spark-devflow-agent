@@ -27,7 +27,7 @@ export function renderDrawer(): HTMLElement | null {
           : list.map((m) => h("div", { class: "mem-card" },
               h("div", { class: "mem-meta" },
                 h("span", { class: "tag" }, KIND_LABEL[m.kind] ?? m.kind),
-                m.privacy === "local" && h("span", { class: "tag", title: "隐私记忆：不会发给 JEV 和云端模型" }, icon(Lock, 11), "仅本地"),
+                m.privacy === "local" && h("span", { class: "tag", title: "隐私记忆：不会发给 JEV 和外部模型" }, icon(Lock, 11), "仅本地"),
                 h("span", { class: "muted small" }, `${when(m.created)} · 用过 ${m.used} 次`)),
               h("p", null, m.content),
               h("div", { class: "mem-actions" },

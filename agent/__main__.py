@@ -160,10 +160,10 @@ def cmd_doctor(args) -> int:
     router = ModelRouter(cfg, None)
     for ep in (cfg.local, cfg.backup, cfg.cloud):
         if not ep.configured:
-            print(f"✗ {ep.name:6} {ep.model}：未配置 {ep.api_key_env}")
+            print(f"✗ {ep.name:6} {ep.model}：未配置 API Key（{ep.api_key_env or '面板模型设置'}）")
             ok_all = False
             continue
-        if not ep.api_key_env and not router.healthy(ep):
+        if not ep.needs_key and not router.healthy(ep):
             print(f"✗ {ep.name:6} {ep.model}：{ep.base_url} 连不上")
             ok_all = False
             continue

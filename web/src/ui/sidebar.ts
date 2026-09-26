@@ -1,12 +1,12 @@
-import { Brain, CircleDot, FolderGit2, LogOut, Plus, Radio, X } from "lucide";
+import { Brain, CircleDot, FolderGit2, LogOut, Plus, Radio, SlidersHorizontal, X } from "lucide";
 import { when } from "../format";
 import { createSession, logout, openSession, setMemoryTab, state, update } from "../store";
 import { h, icon } from "./dom";
 
 const SERVICE_ROWS: { key: "local" | "backup" | "cloud" | "jev" | "linear"; label: string }[] = [
-  { key: "local", label: "本地主模型" },
-  { key: "backup", label: "本地备用" },
-  { key: "cloud", label: "云端" },
+  { key: "local", label: "主力" },
+  { key: "backup", label: "备用" },
+  { key: "cloud", label: "难题" },
   { key: "jev", label: "JEV 决策" },
   { key: "linear", label: "Linear" },
 ];
@@ -29,7 +29,7 @@ function newSessionPanel(): HTMLElement {
       }, h("span", { class: "knob" }))),
     h("div", { class: "popover-row col" },
       h("div", { class: "popover-label" }, "模型档位"),
-      h("div", { class: "seg" }, seg("auto", "自动"), seg("local", "本地"), seg("cloud", "云端"))),
+      h("div", { class: "seg" }, seg("auto", "自动"), seg("local", "主力"), seg("cloud", "难题"))),
     h("div", { class: "popover-actions" },
       h("button", { class: "btn ghost", onclick: () => update((s) => (s.newSessionOpen = false)) }, "取消"),
       h("button", { class: "btn primary", onclick: () => void createSession() }, "开始对话")));
@@ -63,11 +63,14 @@ export function renderSidebar(): HTMLElement {
       h("button", { class: "side-link", onclick: () => { update((s) => (s.drawer = "memory")); void setMemoryTab(state.memoryTab); } },
         icon(Brain, 16), "长期记忆",
         h("span", { class: "count" }, String([...state.memories.values()].filter((m) => m.status === "pending").length || ""))),
+      h("button", { class: "side-link", onclick: () => update((s) => (s.drawer = "models")) },
+        icon(SlidersHorizontal, 16), "模型设置"),
       h("div", { class: "services" },
         SERVICE_ROWS.map(({ key, label }) => {
           const svc = st?.services[key];
           const cls = !svc ? "off" : svc.ok ? (key === "backup" ? "idle" : "run") : "warn";
-          return h("div", { class: "service", title: svc?.model ?? "" },
+          const priv = svc?.private === undefined ? "" : svc.private ? " · 私有" : " · 外部";
+          return h("div", { class: "service", title: `${svc?.model ?? ""}${priv}` },
             h("span", { class: `dot ${cls}` }), h("span", { class: "service-label" }, label),
             h("span", { class: "service-model" }, svc?.model ?? "…"));
         })),

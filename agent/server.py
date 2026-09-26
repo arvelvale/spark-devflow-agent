@@ -16,6 +16,12 @@
   GET    /api/memory?status=active|pending
   POST   /api/memory/<id>/approve    DELETE /api/memory/<id>
   POST   /api/asr?format=wav               请求体是音频字节 → {text}
+  GET    /api/models                       模型设置（供应商、分工位、预设；不含 Key 原文）
+  PUT    /api/models/slots                 {local|backup|cloud: {provider, model}}
+  PUT    /api/models/providers/<id>        {name, base_url, api_key?, private, use_proxy, models:[{name, max_tokens}]}
+  DELETE /api/models/providers/<id>
+  POST   /api/models/providers/<id>/discover   拉取模型列表
+  POST   /api/models/providers/<id>/test       {model} 发一句话试连通
 
 SSE 推送的 trace 事件就是决策轨迹原样（docs/接口/03-决策轨迹格式.md），面板和 A/B 读的是同一份数据。
 """
@@ -42,7 +48,9 @@ from .asr import AsrError, transcribe
 from .config import ROOT, Config
 from .gate import ConfirmRequest
 from .kernel import Agent
+from .llm import LLMClient, LLMError
 from .memory import MemoryStore
+from .models import ModelConfigError, ModelStore, discover_models
 from .router import ModelRouter
 from .skills import load_skills
 from .tools import build_registry
@@ -192,6 +200,11 @@ def list_history(data_dir: Path, live: dict[str, LiveSession], limit: int = 60) 
     return out
 
 
+def _redact(text: str, secret: str) -> str:
+    """供应商的报错里偶尔会回显 Key，给前端前抹掉。"""
+    return text.replace(secret, "***") if secret and len(secret) >= 6 else text
+
+
 class App:
     def __init__(self, cfg: Config, token: str, no_auth: bool = False):
         self.cfg = cfg
@@ -200,6 +213,7 @@ class App:
         self.cookies: set[str] = set()
         self.live: dict[str, LiveSession] = {}
         self.router = ModelRouter(cfg, None)
+        self.models = ModelStore(cfg.models_path)
         self.memory = MemoryStore(cfg.data_dir / "memory.sqlite")
         self.agent_factory = Agent  # 测试里换成带假模型的工厂
         self._lock = threading.Lock()
@@ -210,9 +224,8 @@ class App:
         skills, errors = load_skills(cfg.skills_dir, set(reg.names()))
         return {
             "services": {
-                "local": {"ok": self.router.healthy(cfg.local), "model": cfg.local.model},
-                "backup": {"ok": self.router.healthy(cfg.backup), "model": cfg.backup.model},
-                "cloud": {"ok": cfg.cloud.configured, "model": cfg.cloud.model},
+                **{slot: {"ok": self.router.healthy(ep), "model": ep.model, "private": ep.is_private}
+                   for slot, ep in (("local", cfg.local), ("backup", cfg.backup), ("cloud", cfg.cloud))},
                 "jev": {"ok": bool(cfg.jev_key), "model": cfg.jev_model},
                 "linear": {"ok": bool(cfg.linear_key), "model": cfg.linear_project_name},
             },
@@ -223,6 +236,28 @@ class App:
                        for s in skills],
             "skill_errors": errors,
         }
+
+    def reload_models(self) -> None:
+        """面板里改了模型设置：重新套到运行配置上。新建的会话生效，进行中的会话继续用原来的模型。"""
+        self.models.apply(self.cfg)
+        self.router = ModelRouter(self.cfg, None)  # 清掉旧的探活缓存
+
+    def test_model(self, pid: str, model: str) -> dict:
+        p = self.models.provider(self.cfg, pid)
+        spec = p.model(model)
+        if spec is None:
+            raise ModelConfigError("没有这个模型")
+        ep = p.endpoint("连通测试", spec)
+        if not ep.configured:
+            return {"ok": False, "error": "还没填 API Key"}
+        t0 = time.monotonic()
+        try:
+            r = LLMClient(ep).chat([{"role": "user", "content": "只回复两个字：在线"}], max_tokens=64, retries=0,
+                                   thinking=False)
+        except LLMError as exc:
+            return {"ok": False, "error": _redact(str(exc), ep.api_key)[:300]}
+        return {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000), "reply": r.content[:40],
+                "model": r.model}
 
     def new_session(self, use_jev: bool, tier: str | None) -> LiveSession:
         s = LiveSession(self.cfg, use_jev, tier if tier in ("local", "cloud") else None, self.agent_factory)
@@ -309,6 +344,9 @@ def make_handler(app: App):
         def do_PATCH(self):
             self._dispatch("PATCH")
 
+        def do_PUT(self):
+            self._dispatch("PUT")
+
         def do_DELETE(self):
             self._dispatch("DELETE")
 
@@ -354,6 +392,8 @@ def make_handler(app: App):
                 return self._sessions(method, parts[1:])
             if head == "memory":
                 return self._memory(method, parts[1:], query)
+            if head == "models":
+                return self._models(method, parts[1:])
             if head == "asr" and method == "POST":
                 return self._asr(query)
             if head == "logout" and method == "POST":
@@ -464,6 +504,38 @@ def make_handler(app: App):
             if len(rest) == 1 and method == "DELETE":
                 return self._json({"ok": app.memory.delete(rest[0])})
             return self._error(404, "没有这个接口")
+
+        def _models(self, method: str, rest: list[str]) -> None:
+            cfg = app.cfg
+            try:
+                if not rest and method == "GET":
+                    return self._json(app.models.public(cfg))
+                if rest == ["slots"] and method == "PUT":
+                    data = self._json_body()
+                    if data is None:
+                        return
+                    app.models.set_slots(cfg, data)
+                elif len(rest) == 2 and rest[0] == "providers" and method in ("PUT", "DELETE"):
+                    if method == "PUT":
+                        data = self._json_body()
+                        if data is None:
+                            return
+                        app.models.upsert_provider(cfg, rest[1], data)
+                    else:
+                        app.models.delete_provider(cfg, rest[1])
+                elif len(rest) == 3 and rest[0] == "providers" and rest[2] == "discover" and method == "POST":
+                    return self._json({"models": discover_models(app.models.provider(cfg, rest[1]))})
+                elif len(rest) == 3 and rest[0] == "providers" and rest[2] == "test" and method == "POST":
+                    data = self._json_body()
+                    if data is None:
+                        return
+                    return self._json(app.test_model(rest[1], str(data.get("model", ""))))
+                else:
+                    return self._error(404, "没有这个接口")
+            except ModelConfigError as exc:
+                return self._error(400, str(exc))
+            app.reload_models()
+            return self._json(app.models.public(cfg))
 
         def _asr(self, query: dict) -> None:
             fmt = (query.get("format") or ["wav"])[0]

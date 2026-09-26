@@ -28,7 +28,7 @@ export interface AppState {
   memories: Map<string, MemoryItem>;
   memoryTab: "active" | "pending";
   memoryList: MemoryItem[];
-  drawer: "memory" | null;
+  drawer: "memory" | "models" | null;
   newSessionOpen: boolean;
   newSession: { useJev: boolean; tier: string };
   mobileView: "chat" | "trace";
