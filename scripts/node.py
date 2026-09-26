@@ -37,11 +37,28 @@ def local_proxy() -> tuple[str, int]:
     return u.hostname or "127.0.0.1", u.port or 10090
 
 
-def connect() -> paramiko.SSHClient:
+def _sheet() -> tuple[str, int, dict]:
     rows = list(openpyxl.load_workbook(ROOT / "登录信息表.xlsx", read_only=True, data_only=True).active.values)
     values = {str(r[0]): r[1] for r in rows if r[0] is not None}
     host, port = rows[3][1].rsplit(":", 1)
-    if int(port) != 6006:
+    return host, int(port), values
+
+
+# 组委会的端口映射：节点内端口 → 公网端口前缀，后两位跟 SSH 公网端口一致（本节点 SSH 6006 → 服务 7006/8006/9006）
+PUBLIC_PREFIX = {7000: 7000, 8888: 8000, 9000: 9000}
+
+
+def public_url(node_port: int) -> str | None:
+    """节点内端口在公网上的地址；这个端口没做映射就返回 None。"""
+    host, ssh_port, _ = _sheet()
+    if node_port not in PUBLIC_PREFIX:
+        return None
+    return f"http://{host}:{PUBLIC_PREFIX[node_port] + ssh_port % 100}"
+
+
+def connect() -> paramiko.SSHClient:
+    host, port, values = _sheet()
+    if port != 6006:
         raise RuntimeError("登录表里的端口不是指定的 6006")
     client = paramiko.SSHClient()
     client.load_host_keys(str(ROOT / ".ssh_known_hosts"))  # 首次连接时由 node_admin.py 记录
@@ -206,6 +223,13 @@ def main() -> int:
         host = "0.0.0.0" if args.public else "127.0.0.1"
         print(f"本机访问：http://127.0.0.1:{args.local_port}（Ctrl+C 结束，节点上的服务随之退出）", flush=True)
         extra = " --dev-no-auth" if args.dev_no_auth else ""
+        if args.public:
+            url = public_url(args.port)
+            if url:
+                print(f"公网访问：{url}", flush=True)
+                extra += f" --public-url {shlex.quote(url)}"
+            else:
+                print(f"提醒：节点端口 {args.port} 没有公网映射（只有 7000 / 8888 / 9000 有），外网打不开", flush=True)
         return run(f"python3 -m agent serve --host {host} --port {args.port}{extra}", tunnel=True, pty=True,
                    client=client)
     return run(args.command, tunnel=not args.no_tunnel)

@@ -498,21 +498,31 @@ def make_handler(app: App):
     return Handler
 
 
-def serve(cfg: Config, host: str, port: int, token: str | None = None, no_auth: bool = False) -> None:
+def startup_lines(host: str, port: int, token: str, no_auth: bool, public_url: str | None = None) -> list[str]:
+    """启动提示。公网地址是组委会的端口映射决定的，进程自己不知道，由调用方（scripts/node.py）从登录表算好传进来。"""
+    public = host not in ("127.0.0.1", "localhost", "::1")
+    if public and public_url:
+        lines = [f"面板已启动：{public_url}（节点内监听 {host}:{port}）"]
+    elif public:
+        lines = [f"面板已启动：节点内监听 {host}:{port}（公网地址见登录表的端口映射，可用 --public-url 指定）"]
+    else:
+        lines = [f"面板已启动：http://{host}:{port}"]
+    lines.append("开发模式：免登录（只听回环地址，经 SSH 隧道访问）" if no_auth else f"访问口令：{token}")
+    if public:
+        lines.append("注意：监听在非回环地址，任何知道地址的人都能打开登录页；口令不要外传，用完及时关闭。")
+    return lines
+
+
+def serve(cfg: Config, host: str, port: int, token: str | None = None, no_auth: bool = False,
+          public_url: str | None = None) -> None:
     if no_auth and host not in ("127.0.0.1", "localhost", "::1"):
         raise SystemExit("--dev-no-auth 只能配合回环地址使用；监听公网地址必须登录")
     token = token or os.environ.get("AGENT_WEB_TOKEN") or secrets.token_urlsafe(18)
     app = App(cfg, token, no_auth)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
     httpd.daemon_threads = True
-    public = host not in ("127.0.0.1", "localhost", "::1")
-    print(f"面板已启动：http://{'<公网地址>' if public else host}:{port}", flush=True)
-    if no_auth:
-        print("开发模式：免登录（只听回环地址，经 SSH 隧道访问）", flush=True)
-    else:
-        print(f"访问口令：{token}", flush=True)
-    if public:
-        print("注意：监听在非回环地址，任何知道地址的人都能打开登录页；口令不要外传，用完及时关闭。", flush=True)
+    for line in startup_lines(host, port, token, no_auth, public_url):
+        print(line, flush=True)
     if not DIST.exists():
         print("提醒：web/dist 不存在，先在 web/ 目录 npm run build。", flush=True)
     try:

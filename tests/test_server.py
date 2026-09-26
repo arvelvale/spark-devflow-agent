@@ -207,3 +207,12 @@ def test_static_does_not_escape(running, monkeypatch, tmp_path):
 def test_dev_no_auth_refuses_public_host(cfg):
     with pytest.raises(SystemExit, match="回环"):
         srv.serve(cfg, "0.0.0.0", 0, no_auth=True)
+
+
+def test_startup_lines_show_real_public_address():
+    lines = srv.startup_lines("0.0.0.0", 9000, "tok", False, "http://203.0.113.7:9006")
+    assert lines[0].startswith("面板已启动：http://203.0.113.7:9006")
+    assert "<公网地址>" not in "".join(lines) and any("注意" in l for l in lines)
+    # 没给公网地址时不编一个出来，明确说去哪查
+    assert "登录表" in srv.startup_lines("0.0.0.0", 9000, "tok", False)[0]
+    assert srv.startup_lines("127.0.0.1", 9000, "tok", True)[0] == "面板已启动：http://127.0.0.1:9000"

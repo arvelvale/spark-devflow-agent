@@ -220,7 +220,7 @@ def cmd_memory(args) -> int:
 
 def cmd_serve(args) -> int:
     from .server import serve
-    serve(Config.load(args.workspace), args.host, args.port, no_auth=args.dev_no_auth)
+    serve(Config.load(args.workspace), args.host, args.port, no_auth=args.dev_no_auth, public_url=args.public_url)
     return 0
 
 
@@ -245,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--host", default="127.0.0.1", help="默认只听回环地址；公网映射端口用 0.0.0.0")
     s.add_argument("--port", type=int, default=9000)
     s.add_argument("--dev-no-auth", action="store_true", help="开发用：免登录，只允许配合回环地址")
+    s.add_argument("--public-url", help="启动提示里显示的公网地址（端口映射由组委会决定，进程自己推不出来）")
     args = p.parse_args(argv)
     handlers = {None: cmd_chat, "chat": cmd_chat, "run": cmd_run, "skills": cmd_skills,
                 "doctor": cmd_doctor, "memory": cmd_memory, "serve": cmd_serve}
