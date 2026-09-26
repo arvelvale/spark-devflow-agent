@@ -27,6 +27,7 @@ SSE 推送的 trace 事件就是决策轨迹原样（docs/接口/03-决策轨迹
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -205,12 +206,91 @@ def _redact(text: str, secret: str) -> str:
     return text.replace(secret, "***") if secret and len(secret) >= 6 else text
 
 
+SESSION_TTL = 7 * 86400
+
+
+class WebSessions:
+    """网页登录态。落盘到 <data_dir>/web_sessions.json（600），面板重启后不用重新登录。
+
+    - 文件里只存 cookie 的 SHA-256 和过期时间，不存 cookie 原文：文件泄露也拿不到可用的登录态
+    - 同时记下访问口令的指纹：换了 AGENT_WEB_TOKEN，旧登录全部作废（换口令通常就是为了踢人）
+    - 写盘失败只影响"重启后还认不认"，登录本身照常在内存里生效
+    """
+
+    def __init__(self, path: Path | None, token: str):
+        self.path = path
+        self.token_fp = hashlib.sha256(("dgx-web-token:" + token).encode()).hexdigest()[:24]
+        self._items: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._load()
+
+    @staticmethod
+    def _hash(value: str) -> str:
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    def _load(self) -> None:
+        if not self.path or not self.path.exists():
+            return
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return  # 坏文件当作没有，大家重新登录一次而已
+        if data.get("token") != self.token_fp:
+            return
+        now = time.time()
+        self._items = {h: float(exp) for h, exp in (data.get("sessions") or {}).items() if float(exp) > now}
+
+    def _save(self) -> None:
+        if not self.path:
+            return
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text("", encoding="utf-8")
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
+            tmp.write_text(json.dumps({"token": self.token_fp, "sessions": self._items}), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            sys.stderr.write(f"[web] 登录态写盘失败（重启后需要重新登录）：{exc}\n")
+
+    def create(self) -> str:
+        value = secrets.token_urlsafe(32)
+        with self._lock:
+            now = time.time()
+            self._items = {h: e for h, e in self._items.items() if e > now}  # 顺手清掉过期的
+            self._items[self._hash(value)] = now + SESSION_TTL
+            self._save()
+        return value
+
+    def valid(self, value: str) -> bool:
+        if not value:
+            return False
+        h = self._hash(value)
+        with self._lock:
+            exp = self._items.get(h)
+            if exp is None:
+                return False
+            if exp <= time.time():
+                del self._items[h]
+                self._save()
+                return False
+            return True
+
+    def revoke(self, value: str) -> None:
+        with self._lock:
+            if self._items.pop(self._hash(value), None) is not None:
+                self._save()
+
+
 class App:
     def __init__(self, cfg: Config, token: str, no_auth: bool = False):
         self.cfg = cfg
         self.token = token
         self.no_auth = no_auth  # 仅开发：只允许在回环地址上开启（serve() 里强制检查）
-        self.cookies: set[str] = set()
+        self.sessions = WebSessions(cfg.data_dir / "web_sessions.json", token)
         self.live: dict[str, LiveSession] = {}
         self.router = ModelRouter(cfg, None)
         self.models = ModelStore(cfg.models_path)
@@ -323,7 +403,7 @@ def make_handler(app: App):
                 return True
             cookie = SimpleCookie(self.headers.get("Cookie") or "")
             value = cookie[COOKIE].value if COOKIE in cookie else ""
-            return bool(value) and any(hmac.compare_digest(value, c) for c in app.cookies)
+            return app.sessions.valid(value)
 
         def _live(self, sid: str) -> LiveSession | None:
             s = app.live.get(sid)
@@ -379,10 +459,9 @@ def make_handler(app: App):
             if not hmac.compare_digest(given.encode(), app.token.encode()):
                 time.sleep(1.0)  # 拖慢暴力尝试
                 return self._error(401, "访问口令不对")
-            value = secrets.token_urlsafe(32)
-            app.cookies.add(value)
+            value = app.sessions.create()
             self._json({"ok": True}, extra={
-                "Set-Cookie": f"{COOKIE}={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age={7 * 86400}"})
+                "Set-Cookie": f"{COOKIE}={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}"})
 
         def _api(self, method: str, parts: list[str], query: dict) -> None:
             head = parts[0] if parts else ""
@@ -399,7 +478,7 @@ def make_handler(app: App):
             if head == "logout" and method == "POST":
                 cookie = SimpleCookie(self.headers.get("Cookie") or "")
                 if COOKIE in cookie:
-                    app.cookies.discard(cookie[COOKIE].value)
+                    app.sessions.revoke(cookie[COOKIE].value)
                 return self._json({"ok": True}, extra={"Set-Cookie": f"{COOKIE}=; Path=/; Max-Age=0"})
             return self._error(404, "没有这个接口")
 

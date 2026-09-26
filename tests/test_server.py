@@ -216,3 +216,39 @@ def test_startup_lines_show_real_public_address():
     # 没给公网地址时不编一个出来，明确说去哪查
     assert "登录表" in srv.startup_lines("0.0.0.0", 9000, "tok", False)[0]
     assert srv.startup_lines("127.0.0.1", 9000, "tok", True)[0] == "面板已启动：http://127.0.0.1:9000"
+
+
+# ---------------- 登录态持久化 ----------------
+def test_login_survives_restart_without_storing_cookie(running, cfg):
+    app, port = running
+    cookie = login(port)
+    value = cookie.split("=", 1)[1]
+    stored = (cfg.data_dir / "web_sessions.json").read_text(encoding="utf-8")
+    assert value not in stored  # 只存哈希
+    restarted = srv.App(cfg, TOKEN)  # 模拟重启：新进程从文件读回登录态
+    assert restarted.sessions.valid(value)
+
+
+def test_changing_token_or_logout_invalidates(running, cfg):
+    app, port = running
+    cookie = login(port)
+    value = cookie.split("=", 1)[1]
+    assert not srv.App(cfg, "another-token").sessions.valid(value)  # 换口令 = 踢掉所有人
+    call(port, "POST", "/api/logout", {}, cookie=cookie)
+    assert call(port, "GET", "/api/status", cookie=cookie)[0] == 401
+    assert not srv.App(cfg, TOKEN).sessions.valid(value)  # 退出也落盘了
+
+
+def test_expired_session_rejected(cfg, monkeypatch):
+    s = srv.WebSessions(cfg.data_dir / "web_sessions.json", TOKEN)
+    value = s.create()
+    monkeypatch.setattr(srv.time, "time", lambda: 10**12)  # 远在 7 天之后
+    assert not s.valid(value)
+
+
+def test_corrupt_session_file_is_ignored(cfg):
+    path = cfg.data_dir / "web_sessions.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{坏掉的", encoding="utf-8")
+    s = srv.WebSessions(path, TOKEN)
+    assert not s.valid("anything") and s.valid(s.create())
