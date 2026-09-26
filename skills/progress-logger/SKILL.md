@@ -1,7 +1,8 @@
 ---
 name: progress-logger
 description: >-
-  写日志 / 开发日志 / 进度记录 / progress：汇总当天的 git 提交和完成的 issue，按仓库规范写成 docs/progress/日期.md 日志文件。
+  写开发日志 / 进度记录 / progress：把当天 git 提交和完成的 issue 整理成
+  docs/progress/<日期>.md 留档。只写文件，不口头汇报，不改 Linear 状态。
 version: 0.1.0
 argument-hint: "<日期，默认今天>"
 model: local

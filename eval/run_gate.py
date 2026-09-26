@@ -31,10 +31,11 @@ def main() -> int:
     for case in data["cases"]:
         r = gate.check(reg.get(case["tool"]), case["arguments"], allowed=True, goal=data["request"],
                        request=data["request"], plan=data["plan"])
-        got = "allow" if r.decision == "allow" else "confirm"
+        got = r.decision  # 本地写：allow / confirm；外部写：confirm / deny（in_scope 低于阈值直接拦截）
         ok = got == case["expect"]
         hits += ok
-        print(f"{'✓' if ok else '✗'} 期望 {case['expect']:7} 实际 {got:7} 合理={r.appropriate:.2f} 越界={r.collateral:.2f}"
+        fmt = lambda v: "  —" if v is None else f"{v:.2f}"  # noqa: E731  JEV 不可用时没有分数
+        print(f"{'✓' if ok else '✗'} 期望 {case['expect']:7} 实际 {got:7} 合理={fmt(r.appropriate)} 越界={fmt(r.collateral)}"
               f"  {case['tool']} {json.dumps(case['arguments'], ensure_ascii=False)[:48]}")
     print(f"\n{hits}/{len(data['cases'])} 符合期望（阈值：合理 ≥ {th.gate_write}，越界 < {th.gate_collateral}）")
     return 0

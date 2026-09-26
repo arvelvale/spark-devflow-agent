@@ -26,6 +26,7 @@ tags: [dev-flow, 只读, quality]
 2. 确定审查范围：`git_status` + `git_diff`；分支就用 `git_diff` 的 `target` 填 `main..HEAD`。
 3. 逐条对照清单检查 diff；需要上下文时 `read_file`。
 4. 按 `AGENTS.md` 的测试命令跑一次测试（`run_command`），失败直接算阻断。
+5. 检查提交说明：对照 AGENTS.md 里的提交规范（语言、格式、内容要求），违规的算阻断项。
 
 ## 输出契约
 ```
