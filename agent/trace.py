@@ -13,6 +13,7 @@ EVENT_TYPES = {
     "turn.start", "skill.select", "route.model", "route.escalate", "memory.recall",
     "llm.call", "tool.gate", "tool.call", "context.compress", "memory.write",
     "turn.end", "error",
+    "subagent.start", "subagent.end",  # 2026-09-26 新增（只增不改）
 }
 
 REQUIRED = ("v", "ts", "session", "turn", "seq", "type", "data")

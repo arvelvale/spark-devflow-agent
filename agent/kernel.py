@@ -22,6 +22,7 @@ from .gate import ConfirmRequest, ToolGate
 from .llm import LLMClient, LLMError
 from .memory import MemoryManager, MemorySelection, MemoryStore
 from .prompts import render_skill, render_system
+from . import subagents
 from .router import ModelRouter, Route
 from .skills import Selection, SkillSelector, load_skills
 from .tools import Permission, ToolContext, ToolError, build_registry, truncate
@@ -122,6 +123,8 @@ class Agent:
                                archive=self.archive, memory=self.memory_store, linear=linear,
                                shell_allow=cfg.shell_allow)
         self.ratio = 1.0  # token 估算校准倍率 = 真实 prompt_tokens / 估算值
+        self._current_ep = cfg.local
+        self.ctx.delegate = lambda tasks: subagents.delegate(self, self._current_ep, tasks)
 
     # ------------------------------------------------------------------
     def _usage_snapshot(self) -> dict:
@@ -250,6 +253,7 @@ class Agent:
         self.ctx.skill_scripts = {s.name: {x.name: x for x in s.scripts} for s in sel.skills}
 
         ep, tier = route.endpoint, route.tier
+        self._current_ep = ep
         tried = {ep.name}
         malformed, escalated, truncated_once = 0, False, False
         tool_log: list[dict] = []
@@ -260,6 +264,7 @@ class Agent:
             if self.compressor.maybe_compress(self.conv, estimate_tokens(system), self.working, turn, self.ratio):
                 system = self._system(sel, mem, ep.is_private)
             messages = [{"role": "system", "content": system}] + self.conv.messages
+            self._current_ep = ep  # 子助手在本机不可用时跟随主 agent 当前的模型
             est = estimate_tokens(system) + self.conv.tokens()
             try:
                 res = self.clients[ep.name].chat(messages, schemas, max_tokens=ep.max_tokens,

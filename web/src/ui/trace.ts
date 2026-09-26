@@ -1,6 +1,6 @@
 import {
   ArrowUpRight, Brain, Check, CircleSlash, Cloud, Cpu, FileText, Gauge, Layers, ListChecks, Route, ShieldCheck,
-  Sparkles, TriangleAlert, Wrench, X,
+  CornerDownLeft, Sparkles, TriangleAlert, Users, Wrench, X,
 } from "lucide";
 import {
   DIFFICULTY_LABEL, ENDPOINT_LABEL, GATE_LABEL, ms, num, PERMISSION_LABEL, skillName, TIER_LABEL, tokens,
@@ -158,6 +158,20 @@ function stepItem(e: TraceEvent): HTMLElement | null {
           (d.chunks ?? []).length > 0 && h("div", { class: "step-sub" },
             (d.chunks as any[]).map((c) => h("span", { class: "tag" },
               `${c.id} ${c.verdict === "drop" ? "丢弃" : c.verdict === "summarize_forced" ? "强制摘要" : "留摘要"}`)))));
+    case "subagent.start":
+      return h("li", { class: "step sub" }, icon(Users, 13, "step-icon"),
+        h("div", { class: "step-body" },
+          h("div", { class: "step-title" }, "派出子助手", h("span", null, d.description),
+            h("span", { class: "mono muted" }, d.model)),
+          h("div", { class: "step-sub muted" }, d.prompt)));
+    case "subagent.end":
+      return h("li", { class: ["step sub", !d.ok && "warn"] }, icon(d.ok ? CornerDownLeft : TriangleAlert, 13, "step-icon"),
+        h("div", { class: "step-body" },
+          h("div", { class: "step-title" }, d.ok ? "子助手交回" : "子助手未完成", h("span", null, d.description),
+            h("span", { class: "mono muted" }, `${d.steps} 步 · ${ms(e.latency_ms)}`)),
+          (d.tools ?? []).length > 0 && h("div", { class: "step-sub" },
+            [...new Set(d.tools as string[])].map((n) => h("code", null, n))),
+          h("details", { class: "sub-answer" }, h("summary", null, "看结论"), h("p", null, d.answer))));
     case "error":
       return h("li", { class: "step danger" }, icon(TriangleAlert, 13, "step-icon"),
         h("div", { class: "step-body" }, h("div", { class: "step-title" }, d.handled ? "已自动处理" : "出错"),

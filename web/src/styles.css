@@ -503,3 +503,10 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 @media (max-width: 760px) {
   .slot-row { grid-template-columns: 1fr; gap: 8px; }
 }
+
+/* ---------- 子助手 ---------- */
+.step.sub .step-icon { color: var(--idle); }
+.step.sub .step-title > span:not(.mono) { color: var(--text-2); }
+.sub-answer { margin-top: 4px; font-size: 12.5px; }
+.sub-answer summary { cursor: pointer; color: var(--accent-text); width: fit-content; }
+.sub-answer p { margin: 6px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel-2); white-space: pre-wrap; overflow-wrap: anywhere; }
